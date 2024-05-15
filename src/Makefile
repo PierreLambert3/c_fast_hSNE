@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-I. -I./mylibs -I./extlibs -I/usr/include/SDL2 -O3 -Wall -Wextra -Werror -fopenmp
+CFLAGS=-I. -I./mylibs -I./extlibs -I/usr/include/SDL2 -O3 -Wall -Wextra -Werror  -Wno-unused-variable -Wno-unused-parameter -fopenmp 
 LDFLAGS=-lSDL2 -lm  -lcudart
 DEPS = $(wildcard *.h) $(wildcard mylibs/*.h) $(wildcard extlibs/*.h)
 SRC_DIRS = $(wildcard mylibs/*.c) $(wildcard extlibs/*.c)

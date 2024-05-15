@@ -1,4 +1,4 @@
-MNIST handwritten digits, train set: (60000,28*28) test: (10000,28*28)
+MNIST handwritten digits, train set: (60000,1 + 28*28) test: (10000,1 + 28*28)
 
 the digits are encoded each as a vector of integers between 0 and 255. The vectors in the .csv are separated by a new line, values in a vector are separated by a comma ",".
 The first integer for each digit is its label, an integer between 0 and 9 included.

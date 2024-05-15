@@ -6,5 +6,9 @@
 #include <SDL.h>
 
 #include "mylibs/system.h"
+#include "constants_global.h"
+#include "probabilities.h"
+#include "system.h"
+#include "vector.h"
 
 #endif // INCLUDES_GLOBAL_H
