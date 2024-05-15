@@ -11,9 +11,7 @@ NeighLDDiscoverer* new_NeighLDDiscoverer(uint32_t _N_, uint32_t* thread_rand_see
     // initialize subthreads
     thing->N_reserved_subthreads = max_nb_of_subthreads;
     thing->N_subthreads_target   = max_nb_of_subthreads;
-    thing->subthreads_chunck_size = 1 + floorf(0.05f * (float)_N_);
-    printf("subthreads chunck size: %d\n", thing->subthreads_chunck_size);
-    dying_breath("stop here");
+    thing->subthreads_chunck_size = 1 + floorf(SUBTHREADS_CHUNK_SIZE_PCT * (float)_N_);
     thing->subthreads        = (pthread_t*)malloc(sizeof(pthread_t) * max_nb_of_subthreads);
     thing->threads_waiting_for_task = (bool*)malloc(sizeof(bool) * max_nb_of_subthreads);
     thing->subthreads_mutexes = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t) * max_nb_of_subthreads);
@@ -22,6 +20,7 @@ NeighLDDiscoverer* new_NeighLDDiscoverer(uint32_t _N_, uint32_t* thread_rand_see
         pthread_mutex_init(&thing->subthreads_mutexes[i], NULL);
         thing->threads_waiting_for_task[i] = true;
     }
+    pthread_mutex_init(&thing->mutex_N_subthreads_target, NULL);
 
     for(uint32_t i = 0; i < max_nb_of_subthreads; i++){
         thing->subthread_data[i].stop_this_thread = false;
@@ -43,6 +42,9 @@ NeighLDDiscoverer* new_NeighLDDiscoverer(uint32_t _N_, uint32_t* thread_rand_see
         thing->subthread_data[i].thread_mutex = &thing->subthreads_mutexes[i];
         thing->subthread_data[i].thread_waiting_for_task = &thing->threads_waiting_for_task[i];
     }
+
+
+
     // Algorithm and subthread data: for determining LD neighbours, Q, and Qdenom
     thing->N = _N_;
     thing->Xld = _Xld_;
@@ -75,15 +77,37 @@ void destroy_NeighLDDiscoverer(NeighLDDiscoverer* thing){
 void* subroutine_NeighLDDiscoverer(void* arg){
     SubthreadData* data = (SubthreadData*)arg;
     while(!data->stop_this_thread){
-       double dbl_acc_denom = 0.;
-       uint32_t n_votes = 0;
-       data->estimated_Qdenom = 0.0f;
+        pthread_mutex_lock(data->thread_mutex);
+        if(data->thread_waiting_for_task[0]){ // subthread is waiting for a task to be assigned
+            pthread_mutex_unlock(data->thread_mutex);
+            usleep(20000); // 2% of a second, prevent the thread from taking too much CPU time
+        }
+        else{
+            data->estimated_Qdenom = 0.0f;
+            pthread_mutex_unlock(data->thread_mutex);
+            // do the work
+            double dbl_acc_denom = 0.;
+            uint32_t n_votes = 0;
 
+            // simulate computations
+            double random_double = (double) rand_float_between(&data->rand_state, 0.0f, 1.0f);
+            dbl_acc_denom = random_double;
+            printf("acc_denom = %f\n", dbl_acc_denom);
+            n_votes = 1;
+            usleep(500000); // 50% of a second, prevent the thread from taking too much CPU time
+
+            // update the Q denominator estimation and notify that the subthread is waiting for a task
+            pthread_mutex_lock(data->thread_mutex);
+            data->estimated_Qdenom = (float) (dbl_acc_denom * ( ((double) (data->N*data->N - data->N)) / (double) n_votes));
+            data->thread_waiting_for_task[0] = true;
+            pthread_mutex_unlock(data->thread_mutex);
+        }
         
-        pthread_mutex_lock(thread_mutex);
-        data->estimated_Qdenom = (float) (dbl_acc_denom * ( ((double) (N*N - N)) / (double) n_votes));
-        pthread_mutex_unlock(thread_mutex);
+        
+        
     }
+
+
     // (pour le deadlock juste copier i sur la stack avec lock puis demander le lock pour les j apres)
     // (pour le deadlock juste copier i sur la stack avec lock puis demander le lock pour les j apres)
     // (pour le deadlock juste copier i sur la stack avec lock puis demander le lock pour les j apres)
@@ -104,39 +128,72 @@ void* routine_NeighLDDiscoverer(void* arg){
     uint32_t cursor = 0; // the cursor for the start of the next chunk
     while (thing->isRunning) {
         pthread_mutex_lock(thing->mutex_Qdenom);
-        float    now_Qdenom = Qdenom[0];
+        float    now_Qdenom = thing->Qdenom[0];
         pthread_mutex_unlock(thing->mutex_Qdenom);
-        for(uint32_t i = 0; i < thing->N_subthreads_target; i++){
+        pthread_mutex_lock(&thing->mutex_N_subthreads_target);
+        uint32_t now_N_subthreads_target = thing->N_subthreads_target;
+        pthread_mutex_unlock(&thing->mutex_N_subthreads_target);
+        for(uint32_t i = 0; i < now_N_subthreads_target; i++){
             // Check if the thread is waiting for a task
-            float estimation_of_denom = -1.0f; 
+            float subthread_estimation_of_denom = -1.0f; 
             pthread_mutex_lock(&thing->subthreads_mutexes[i]);
             if(thing->threads_waiting_for_task[i]){ // subthread is waiting for a task
-                // 1: temporarily save estimated denominator value
-                estimation_of_denom = thing->subthread_data[i].estimated_Qdenom;
-                
+                // 1: temporarily save previous estimated denominator value
+                subthread_estimation_of_denom = thing->subthread_data[i].estimated_Qdenom;
                 // 2: Assign a new task to the thread
                 thing->threads_waiting_for_task[i] = false;
                 thing->subthread_data[i].L = cursor;
                 thing->subthread_data[i].R = cursor + thing->subthreads_chunck_size > thing->N ? thing->N : cursor + thing->subthreads_chunck_size;
                 thing->subthread_data[i].estimated_Qdenom = now_Qdenom;
-                thing->
-
-                // update the cursor for the next subthread
+                // 3: update the cursor through N for the next subthread
                 cursor += thing->subthreads_chunck_size;
                 if(cursor >= thing->N){
                     cursor = 0;}
             }
             pthread_mutex_unlock(&thing->subthreads_mutexes[i]);
-            if(estimation_of_denom > 0.0f){
+
+            if(subthread_estimation_of_denom > 0.0f){
                 pthread_mutex_lock(thing->mutex_Qdenom);
-                double dbl_old_Qdenom = (double) Qdenom[0];
-                dbl_old_Qdenom = alphaQ*dbl_old_Qdenom + (1.0 - alphaQ)*(double)estimation_of_denom;
-                Qdenom[0] = (float) dbl_old_Qdenom;
+
+                float denom_here = thing->Qdenom[0];
+                float after_decay = ALPHA_QDENOM * denom_here;
+                float new_estimation = subthread_estimation_of_denom;
+                float contribution = (1.0 - ALPHA_QDENOM) * new_estimation;
+                float new_denom = after_decay + contribution;
+                printf("denom_here=%f,   after_decay=%f,   new_estimation=%f,   contribution=%f,   new_denom=%f\n", denom_here, after_decay, new_estimation, contribution, new_denom);
+
+
+                // printf("Qdenom=%f,   estimation=%f     ALPHA_QDENOM*thing->Qdenom[0] = %f\n", thing->Qdenom[0], subthread_estimation_of_denom, ALPHA_QDENOM*thing->Qdenom[0]);
+                // printf("float_double_mul = %f\n", float_double_mul);
+                float comp = ALPHA_QDENOM * denom_here + (1.0 - ALPHA_QDENOM) * subthread_estimation_of_denom;
+                float comp2 = (float)((double)ALPHA_QDENOM * (double)thing->Qdenom[0] + (double)(1.0 - ALPHA_QDENOM) * (double)subthread_estimation_of_denom);
+
+                thing->Qdenom[0] = (float) ((double)ALPHA_QDENOM*(double)thing->Qdenom[0] + (double)(1.0 - ALPHA_QDENOM)*(double)subthread_estimation_of_denom);
+                printf("comp=%f,   comp2=%f   thing->Qdenom[0] %f\n", comp, comp2, thing->Qdenom[0]);
+
+                /* ok gros bug a moitié résolu:
+                  si je fais double comme pour ligne 168, alors pas pareil que si je fais float comme ligne 169.
+                  manuellement regarder lequel des résulat est le bon et le garde */
+                  je pense que ce bug est résolu ^ 
+
+                printf("Qdenom=%f,  estimation=%f      comp %f   (== new denom %f)\n", thing->Qdenom[0], subthread_estimation_of_denom, comp, new_denom);
                 pthread_mutex_unlock(thing->mutex_Qdenom);
             }
         }
-        usleep(40000); // 4% of a second, prevent the thread from taking too much CPU time
+        // usleep(40000); // 4% of a second, prevent the thread from taking too much CPU time
+        sleep(1); 
+
+        float random_number = rand_float_between(&thing->rand_state, 0.0f, 1.0f);
+        printf("random number: %f\n", random_number);
+        if(random_number < 0.15f){
+            thing->isRunning = false;
+            for(uint32_t i = 0; i < now_N_subthreads_target; i++){
+                thing->subthread_data[i].stop_this_thread = true;}
+        }
+
     }
+
+
     return NULL;
 }
 

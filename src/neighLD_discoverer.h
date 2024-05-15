@@ -6,6 +6,7 @@
 #include "probabilities.h"
 #include <stdbool.h>
 #include <stdint.h>
+#include "constants_global.h"
 
 typedef struct {
     bool     stop_this_thread;
@@ -39,6 +40,7 @@ typedef struct {
     uint32_t subthreads_chunck_size; // the number of elements to be processed by each subthread
     pthread_t*       subthreads;
     pthread_mutex_t* subthreads_mutexes;
+    pthread_mutex_t  mutex_N_subthreads_target;
     bool* threads_waiting_for_task;
     
     // Algorithm and subthread data: for determining LD neighbours, Q, and Qdenom

@@ -105,7 +105,7 @@ int main() {
     float**    Q       = float_matrix_initval(N, Kld, 1.0f);
     float**    P       = float_matrix_initval(N, Khd, 1.0f);
     float*     radii   = float_array_initval(N, 1.0f);
-    float      Q_denom = 1.0f * N * Kld;
+    float      Q_denom = 1.0f * N * N;
     // initialise the Q_denom mutex
     pthread_mutex_t mutex_Qdenom;
     if(pthread_mutex_init(&mutex_Qdenom, NULL) != 0) {

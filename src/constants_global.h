@@ -5,6 +5,12 @@
 // a global epsilon for floating points equal to 1e-16
 #define FLOAT_EPS 1e-12
 
+// size of chunks for subthreads, as a percentage of N
+#define SUBTHREADS_CHUNK_SIZE_PCT 0.05f
+
+// speed at which the Q denominator is updated
+#define ALPHA_QDENOM 0.95f + ((1.f - 0.95f) * (1. - SUBTHREADS_CHUNK_SIZE_PCT))
+
 // a set of 3 uint8_t values representing base terminal text colour
 #define TERMINAL_TEXT_COLOUR_R 220
 #define TERMINAL_TEXT_COLOUR_G 130
