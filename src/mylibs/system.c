@@ -138,6 +138,12 @@ double* double_array_initval(size_t size, double init_val) {
     return array;
 }
 
+retirer tous les malloc qui n ont pas d init, c est dangereux et ca permet de raccourcir le nom (mettre malloc dans le nouveau nom)
+retirer tous les malloc qui n ont pas d init, c est dangereux et ca permet de raccourcir le nom (mettre malloc dans le nouveau nom)
+retirer tous les malloc qui n ont pas d init, c est dangereux et ca permet de raccourcir le nom (mettre malloc dans le nouveau nom)
+retirer tous les malloc qui n ont pas d init, c est dangereux et ca permet de raccourcir le nom (mettre malloc dans le nouveau nom)
+
+
 int* int_array_initval(size_t size, int init_val) {
     int* array = int_array(size);
     for (size_t i = 0; i < size; i++) {
