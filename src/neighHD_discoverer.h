@@ -22,7 +22,7 @@ typedef struct {
     int*     test_variable;
 } NeighHDDiscoverer;
 
-NeighHDDiscoverer* new_NeighHDDiscoverer(uint32_t _N_, uint32_t* thread_rand_seed, uint32_t max_nb_of_subthreads);
+void new_NeighHDDiscoverer(NeighHDDiscoverer* thing, uint32_t _N_, uint32_t* thread_rand_seed, uint32_t max_nb_of_subthreads);
 void  destroy_NeighHDDiscoverer(NeighHDDiscoverer* thing);
 void* routine_NeighHDDiscoverer(void* arg);
 void start_thread_NeighHDDiscoverer(NeighHDDiscoverer* thing);

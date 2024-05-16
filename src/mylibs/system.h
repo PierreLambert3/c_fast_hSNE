@@ -24,7 +24,13 @@ void reset_console_colour();
 
 
 // ------------------- memory allocation -------------------
-float*     f32_array(size_t size);
+pthread_mutex_t* mutexes_allocate_and_init(size_t size);
+
+bool*      bool_array(size_t size);
+bool*      bool_array_initval(size_t size, bool init_val);
+bool**     bool_matrix(size_t n, size_t m);
+bool**     bool_matrix_initval(size_t n, size_t m, bool init_val);      
+float*     float_array(size_t size);
 double*    double_array(size_t size);
 int*       int_array(size_t size);
 uint8_t*   uint8_t_array(size_t size);

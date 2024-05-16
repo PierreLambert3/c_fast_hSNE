@@ -3,6 +3,7 @@
 
 #include <pthread.h>
 #include "system.h"
+#include "vector.h"
 #include "probabilities.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -12,8 +13,8 @@ typedef struct {
     bool     stop_this_thread;
     uint32_t N;
     uint32_t rand_state;
-    int      L;
-    int      R;
+    uint32_t      L;
+    uint32_t      R;
     float**    Xld;
     float**    Xhd;
     uint32_t   Mld;
@@ -21,11 +22,15 @@ typedef struct {
     uint32_t   Kld;
     uint32_t** neighsLD;
     uint32_t** neighsHD;
+    float*     furthest_neighdists_LD;
     float**    Q;
     float      estimated_Qdenom;
+    bool* thread_waiting_for_task;
     pthread_mutex_t* mutexes_sizeN;
     pthread_mutex_t* thread_mutex;
-    bool* thread_waiting_for_task;
+    uint32_t*    random_indices_exploration;    
+    uint32_t*    random_indices_exploitation_HD;    
+    uint32_t*    random_indices_exploitation_LD;    
 } SubthreadData;
 
 typedef struct {
@@ -33,8 +38,6 @@ typedef struct {
     pthread_t thread;
     bool     isRunning;
     uint32_t rand_state;
-    uint32_t passes_since_reset;
-    float    p_wakeup;
     uint32_t N_reserved_subthreads;
     uint32_t N_subthreads_target;
     uint32_t subthreads_chunck_size; // the number of elements to be processed by each subthread
@@ -45,7 +48,7 @@ typedef struct {
     
     // Algorithm and subthread data: for determining LD neighbours, Q, and Qdenom
     SubthreadData* subthread_data;
-    uint32_t N;
+    uint32_t   N;
     float**    Xld;
     float**    Xhd;
     uint32_t   Mld;
@@ -53,21 +56,27 @@ typedef struct {
     uint32_t   Kld;
     uint32_t** neighsLD;
     uint32_t** neighsHD;
+    float*     furthest_neighdists_LD;
     float**    Q;
-    float*     Qdenom;
+    float*     ptr_Qdenom;
     pthread_mutex_t* mutex_Qdenom;  
     pthread_mutex_t* mutexes_sizeN;
 } NeighLDDiscoverer;
 
 
-
-NeighLDDiscoverer* new_NeighLDDiscoverer(uint32_t _N_, uint32_t* thread_rand_seed, uint32_t max_nb_of_subthreads,\
+void new_NeighLDDiscoverer(NeighLDDiscoverer* thing, uint32_t _N_, uint32_t* thread_rand_seed, uint32_t max_nb_of_subthreads,\
     pthread_mutex_t* _mutex_Qdenom_, pthread_mutex_t* mutexes_sizeN, float** _Xld_, float** _Xhd_, uint32_t _Mld_, uint32_t _Khd_,\
-    uint32_t _Kld_, uint32_t** _neighsLD_, uint32_t** _neighsHD_, float** _Q_, float* _Qdenom_);
+    uint32_t _Kld_, uint32_t** _neighsLD_, uint32_t** _neighsHD_, float* furthest_neighdists_LD, float** _Q_, float* _Qdenom_);
+
 void  destroy_NeighLDDiscoverer(NeighLDDiscoverer* thing);
 void* routine_NeighLDDiscoverer(void* arg);
 void  start_thread_NeighLDDiscoverer(NeighLDDiscoverer* thing);
 
 void* subroutine_NeighLDDiscoverer(void* arg);
+
+// refines the estimated set of LD neighbours for points between L and R
+// return the estimation of the total sum of q_ij based on the q_ij that were computed during the neigbhour refinenement process
+double  refine_LD_neighbours(SubthreadData* thing);
+
 
 #endif // NEIGHHD_DISCOVERER_H

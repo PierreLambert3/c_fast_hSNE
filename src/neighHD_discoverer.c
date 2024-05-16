@@ -1,7 +1,6 @@
 #include "neighHD_discoverer.h"
 
-NeighHDDiscoverer* new_NeighHDDiscoverer(uint32_t _N_, uint32_t* thread_rand_seed, uint32_t max_nb_of_subthreads) {
-    NeighHDDiscoverer* thing = (NeighHDDiscoverer*)malloc(sizeof(NeighHDDiscoverer));   
+void new_NeighHDDiscoverer(NeighHDDiscoverer* thing, uint32_t _N_, uint32_t* thread_rand_seed, uint32_t max_nb_of_subthreads) {
     thing->N_reserved_subthreads = max_nb_of_subthreads;
     thing->N_subthreads_now      = 0;
     thing->N_subthreads_target   = 1;
@@ -21,7 +20,6 @@ NeighHDDiscoverer* new_NeighHDDiscoverer(uint32_t _N_, uint32_t* thread_rand_see
     thing->N = _N_;
     thing->test_variable = int_array_initval(10, 0);
     printf("%d rand state\n", thing->rand_state);
-    return thing;
 }
 
 void destroy_NeighHDDiscoverer(NeighHDDiscoverer* thing) {

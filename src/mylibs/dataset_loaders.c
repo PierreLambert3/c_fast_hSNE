@@ -18,4 +18,5 @@ void load_mnist(uint32_t* N, uint32_t* M, float** X, uint32_t* Y) {
             X[i][j] = X[i][j] / 255.0f;
         }
     }
+    fclose(file);
 }

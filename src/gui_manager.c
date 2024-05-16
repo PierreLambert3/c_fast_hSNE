@@ -1,7 +1,6 @@
 #include "gui_manager.h"
 
-GuiManager* new_GuiManager(uint32_t _N_, NeighHDDiscoverer* _neighHD_discoverer_,  NeighLDDiscoverer* _neighLD_discoverer_, EmbeddingMaker* _embedding_maker_, uint32_t* thread_rand_seed) {
-    GuiManager* thing = (GuiManager*)malloc(sizeof(GuiManager));
+void new_GuiManager(GuiManager* thing, uint32_t _N_, NeighHDDiscoverer* _neighHD_discoverer_,  NeighLDDiscoverer* _neighLD_discoverer_, EmbeddingMaker* _embedding_maker_, uint32_t* thread_rand_seed) {
     thing->isRunning = false;
     thing->rand_state = (uint32_t)time(NULL) + thread_rand_seed[0]++;
     thing->N = _N_;
@@ -9,7 +8,6 @@ GuiManager* new_GuiManager(uint32_t _N_, NeighHDDiscoverer* _neighHD_discoverer_
     thing->neighLD_discoverer = _neighLD_discoverer_;
     thing->embedding_maker = _embedding_maker_;
     printf("%d rand state\n", thing->rand_state);
-    return thing;
 }
 
 void destroy_GuiManager(GuiManager* thing) {

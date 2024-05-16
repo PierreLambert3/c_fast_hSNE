@@ -1,8 +1,7 @@
 #include "embedding_maker.h"
 
-EmbeddingMaker* new_EmbeddingMaker(uint32_t _N_, uint32_t* thread_rand_seed, uint32_t max_nb_of_subthreads){
-    EmbeddingMaker* thing = (EmbeddingMaker*)malloc(sizeof(EmbeddingMaker));
-    thing->N_reserved_subthreads = max_nb_of_subthreads;
+void new_EmbeddingMaker(EmbeddingMaker* thing, uint32_t _N_, uint32_t* thread_rand_seed, uint32_t max_nb_of_subthreads){
+    /* thing->N_reserved_subthreads = max_nb_of_subthreads;
     thing->N_subthreads_now      = 0;
     thing->N_subthreads_target   = max_nb_of_subthreads;
     // initialize subthreads
@@ -19,8 +18,8 @@ EmbeddingMaker* new_EmbeddingMaker(uint32_t _N_, uint32_t* thread_rand_seed, uin
     thing->passes_since_reset = 0;
     thing->p_wakeup = 1.0f;
     thing->N = _N_;
-    printf("%d rand state\n", thing->rand_state);
-    return thing;
+    printf("%d rand state\n", thing->rand_state); */
+    
 }
 
 /*
@@ -34,7 +33,7 @@ void destroy_EmbeddingMaker(EmbeddingMaker* thing){
 }
 
 void* routine_EmbeddingMaker(void* arg){
-    EmbeddingMaker* thing = (EmbeddingMaker*)arg;
+    /* EmbeddingMaker* thing = (EmbeddingMaker*)arg;
     thing->isRunning = true;
     while (thing->isRunning) {
         //check random value
@@ -44,7 +43,8 @@ void* routine_EmbeddingMaker(void* arg){
         if(random_value < 1) {
             thing->isRunning = false;}
     }
-    return NULL;
+    return NULL; */
+    return NULL; 
 }
 
 void start_thread_EmbeddingMaker(EmbeddingMaker* thing){

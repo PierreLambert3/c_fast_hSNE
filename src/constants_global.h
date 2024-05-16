@@ -1,15 +1,25 @@
+
 // protect this header file
 #ifndef CONSTANTS_GLOBAL_H
 #define CONSTANTS_GLOBAL_H
 
+#include <stdbool.h>
+#include <stdint.h>
+
 // a global epsilon for floating points equal to 1e-16
-#define FLOAT_EPS 1e-12
+#define FLOAT_EPS 1e-12f
 
 // size of chunks for subthreads, as a percentage of N
 #define SUBTHREADS_CHUNK_SIZE_PCT 0.05f
 
 // speed at which the Q denominator is updated
-#define ALPHA_QDENOM 0.95f + ((1.f - 0.95f) * (1. - SUBTHREADS_CHUNK_SIZE_PCT))
+#define ALPHA_QDENOM (0.95f + ((1.f - 0.95f) * (1.f - SUBTHREADS_CHUNK_SIZE_PCT)))
+
+// the number of random points randomly sampled during neighbour discovery, on all the dataset
+#define NEIGH_FAR_EXPLORATION_N_SAMPLES   5u
+#define NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES 7u // same, for neighbours of neighbours and neighbours in other spaces
+#define NEIGH_NEAR_EXPLOITATION_HD_N_SAMPLES 7u // same, for neighbours of neighbours and neighbours in other spaces
+
 
 // a set of 3 uint8_t values representing base terminal text colour
 #define TERMINAL_TEXT_COLOUR_R 220

@@ -16,7 +16,7 @@ typedef struct {
     EmbeddingMaker* embedding_maker;
 } GuiManager;
 
-GuiManager* new_GuiManager(uint32_t _N_, NeighHDDiscoverer* _neighHD_discoverer_,  NeighLDDiscoverer* _neighLD_discoverer_, EmbeddingMaker* _embedding_maker_, uint32_t* thread_rand_seed);
+void new_GuiManager(GuiManager* thing, uint32_t _N_, NeighHDDiscoverer* _neighHD_discoverer_,  NeighLDDiscoverer* _neighLD_discoverer_, EmbeddingMaker* _embedding_maker_, uint32_t* thread_rand_seed);
 void  destroy_GuiManager(GuiManager* thing);
 int routine_GuiManager(void* arg);
 void start_thread_GuiManager(GuiManager* thing);

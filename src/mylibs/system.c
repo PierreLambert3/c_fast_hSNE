@@ -32,6 +32,50 @@ void reset_console_colour(){
 }
 
 // ------------------- memory allocation -------------------
+pthread_mutex_t* mutexes_allocate_and_init(size_t size){
+    pthread_mutex_t* mutexes = (pthread_mutex_t*)malloc(size * sizeof(pthread_mutex_t));
+    if (mutexes == NULL) {
+        die("Failed to allocate memory for mutexes");}
+    for (size_t i = 0; i < size; i++) {
+        if (pthread_mutex_init(&mutexes[i], NULL) != 0) {
+            die("Failed to initialise mutex");}
+    }
+    return mutexes;
+}
+
+bool* bool_array(size_t size){
+    bool* array = (bool*)malloc(size * sizeof(bool));
+    if (array == NULL) {
+        die("Failed to allocate memory for bool array");}
+    return array;
+}
+
+bool* bool_array_initval(size_t size, bool init_val){
+    bool* array = bool_array(size);
+    for (size_t i = 0; i < size; i++) {
+        array[i] = init_val;}
+    return array;
+}
+bool** bool_matrix(size_t n, size_t m){
+    bool*  data = (bool*)malloc(n * m * sizeof(bool));
+    bool** matrix = (bool**)malloc(n * sizeof(bool*));
+    matrix[0] = data;
+    for(size_t i = 1; i < n; i++)
+        matrix[i] = &data[m * i];
+    return matrix;
+}
+
+bool** bool_matrix_initval(size_t n, size_t m, bool init_val){
+    bool** matrix = bool_matrix(n, m);
+    for (size_t i = 0; i < n; i++) {
+        for (size_t j = 0; j < m; j++) {
+            matrix[i][j] = init_val;
+        }
+    }
+    return matrix;
+}
+
+
 float* float_array(size_t size) {
     float* array = (float*)malloc(size * sizeof(float));
     if (array == NULL) {
