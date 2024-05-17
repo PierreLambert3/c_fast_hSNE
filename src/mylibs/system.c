@@ -43,31 +43,85 @@ pthread_mutex_t* mutexes_allocate_and_init(size_t size){
     return mutexes;
 }
 
-bool* bool_array(size_t size){
+// malloc handlers for 1d arrays
+bool* malloc_bool(size_t size, bool init_val) {
     bool* array = (bool*)malloc(size * sizeof(bool));
     if (array == NULL) {
-        die("Failed to allocate memory for bool array");}
-    return array;
-}
-
-bool* bool_array_initval(size_t size, bool init_val){
-    bool* array = bool_array(size);
+        die("Failed to allocate memory for bool array");
+    }
     for (size_t i = 0; i < size; i++) {
-        array[i] = init_val;}
+        array[i] = init_val;
+    }
     return array;
 }
-bool** bool_matrix(size_t n, size_t m){
-    bool*  data = (bool*)malloc(n * m * sizeof(bool));
-    bool** matrix = (bool**)malloc(n * sizeof(bool*));
-    matrix[0] = data;
-    for(size_t i = 1; i < n; i++)
-        matrix[i] = &data[m * i];
-    return matrix;
+
+float* malloc_float(size_t size, float init_val) {
+    float* array = (float*)malloc(size * sizeof(float));
+    if (array == NULL) {
+        die("Failed to allocate memory for float array");
+    }
+    for (size_t i = 0; i < size; i++) {
+        array[i] = init_val;
+    }
+    return array;
 }
 
-bool** bool_matrix_initval(size_t n, size_t m, bool init_val){
-    bool** matrix = bool_matrix(n, m);
+double* malloc_double(size_t size, double init_val) {
+    double* array = (double*)malloc(size * sizeof(double));
+    if (array == NULL) {
+        die("Failed to allocate memory for double array");
+    }
+    for (size_t i = 0; i < size; i++) {
+        array[i] = init_val;
+    }
+    return array;
+}
+
+uint32_t* malloc_uint32_t(size_t size, uint32_t init_val) {
+    uint32_t* array = (uint32_t*)malloc(size * sizeof(uint32_t));
+    if (array == NULL) {
+        die("Failed to allocate memory for uint32_t array");
+    }
+    for (size_t i = 0; i < size; i++) {
+        array[i] = init_val;
+    }
+    return array;
+}
+
+uint16_t* malloc_uint16_t(size_t size, uint16_t init_val) {
+    uint16_t* array = (uint16_t*)malloc(size * sizeof(uint16_t));
+    if (array == NULL) {
+        die("Failed to allocate memory for uint16_t array");
+    }
+    for (size_t i = 0; i < size; i++) {
+        array[i] = init_val;
+    }
+    return array;
+}
+
+uint8_t* malloc_uint8_t(size_t size, uint8_t init_val) {
+    uint8_t* array = (uint8_t*)malloc(size * sizeof(uint8_t));
+    if (array == NULL) {
+        die("Failed to allocate memory for uint8_t array");
+    }
+    for (size_t i = 0; i < size; i++) {
+        array[i] = init_val;
+    }
+    return array;
+}
+
+// malloc handlers for 2d matrices
+bool** malloc_bool_matrix(size_t n, size_t m, bool init_val) {
+    bool** matrix = (bool**)malloc(n * sizeof(bool*));
+    if (matrix == NULL) {
+        die("Failed to allocate memory for bool matrix");
+    }
+    bool* data = (bool*)malloc(n * m * sizeof(bool));
+    if (data == NULL) {
+        die("Failed to allocate memory for bool matrix data");
+    }
     for (size_t i = 0; i < n; i++) {
+        matrix[i] = &data[m * i];
         for (size_t j = 0; j < m; j++) {
             matrix[i][j] = init_val;
         }
@@ -75,101 +129,94 @@ bool** bool_matrix_initval(size_t n, size_t m, bool init_val){
     return matrix;
 }
 
-
-float* float_array(size_t size) {
-    float* array = (float*)malloc(size * sizeof(float));
-    if (array == NULL) {
-        die("Failed to allocate memory for float array");
+float** malloc_float_matrix(size_t n, size_t m, float init_val) {
+    float** matrix = (float**)malloc(n * sizeof(float*));
+    if (matrix == NULL) {
+        die("Failed to allocate memory for float matrix");
     }
-    return array;
-}
-
-double* double_array(size_t size) {
-    double* array = (double*)malloc(size * sizeof(double));
-    if (array == NULL) {
-        die("Failed to allocate memory for double array");
+    float* data = (float*)malloc(n * m * sizeof(float));
+    if (data == NULL) {
+        die("Failed to allocate memory for float matrix data");
     }
-    return array;
-}
-
-int* int_array(size_t size) {
-    int* array = (int*)malloc(size * sizeof(int));
-    if (array == NULL) {
-        die("Failed to allocate memory for int array");
+    for (size_t i = 0; i < n; i++) {
+        matrix[i] = &data[m * i];
+        for (size_t j = 0; j < m; j++) {
+            matrix[i][j] = init_val;
+        }
     }
-    return array;
+    return matrix;
 }
 
-uint8_t* uint8_t_array(size_t size) {
-    uint8_t* array = (uint8_t*)malloc(size * sizeof(uint8_t));
-    if (array == NULL) {
-        die("Failed to allocate memory for uint8_t array");
+double** malloc_double_matrix(size_t n, size_t m, double init_val) {
+    double** matrix = (double**)malloc(n * sizeof(double*));
+    if (matrix == NULL) {
+        die("Failed to allocate memory for double matrix");
     }
-    return array;
-}
-
-uint16_t* uint16_t_array(size_t size) {
-    uint16_t* array = (uint16_t*)malloc(size * sizeof(uint16_t));
-    if (array == NULL) {
-        die("Failed to allocate memory for uint16_t array");
+    double* data = (double*)malloc(n * m * sizeof(double));
+    if (data == NULL) {
+        die("Failed to allocate memory for double matrix data");
     }
-    return array;
-}
-
-uint32_t* uint32_t_array(size_t size) {
-    uint32_t* array = (uint32_t*)malloc(size * sizeof(uint32_t));
-    if (array == NULL) {
-        die("Failed to allocate memory for uint32_t array");
+    for (size_t i = 0; i < n; i++) {
+        matrix[i] = &data[m * i];
+        for (size_t j = 0; j < m; j++) {
+            matrix[i][j] = init_val;
+        }
     }
-    return array;
+    return matrix;
 }
 
-float* float_array_initval(size_t size, float init_val) {
-    float* array = float_array(size);
-    for (size_t i = 0; i < size; i++) {
-        array[i] = init_val;}
-    return array;
+uint32_t** malloc_uint32_t_matrix(size_t n, size_t m, uint32_t init_val) {
+    uint32_t** matrix = (uint32_t**)malloc(n * sizeof(uint32_t*));
+    if (matrix == NULL) {
+        die("Failed to allocate memory for uint32_t matrix");
+    }
+    uint32_t* data = (uint32_t*)malloc(n * m * sizeof(uint32_t));
+    if (data == NULL) {
+        die("Failed to allocate memory for uint32_t matrix data");
+    }
+    for (size_t i = 0; i < n; i++) {
+        matrix[i] = &data[m * i];
+        for (size_t j = 0; j < m; j++) {
+            matrix[i][j] = init_val;
+        }
+    }
+    return matrix;
 }
 
-double* double_array_initval(size_t size, double init_val) {
-    double* array = double_array(size);
-    for (size_t i = 0; i < size; i++) {
-        array[i] = init_val;}
-    return array;
+uint16_t** malloc_uint16_t_matrix(size_t n, size_t m, uint16_t init_val) {
+    uint16_t** matrix = (uint16_t**)malloc(n * sizeof(uint16_t*));
+    if (matrix == NULL) {
+        die("Failed to allocate memory for uint16_t matrix");
+    }
+    uint16_t* data = (uint16_t*)malloc(n * m * sizeof(uint16_t));
+    if (data == NULL) {
+        die("Failed to allocate memory for uint16_t matrix data");
+    }
+    for (size_t i = 0; i < n; i++) {
+        matrix[i] = &data[m * i];
+        for (size_t j = 0; j < m; j++) {
+            matrix[i][j] = init_val;
+        }
+    }
+    return matrix;
 }
 
-retirer tous les malloc qui n ont pas d init, c est dangereux et ca permet de raccourcir le nom (mettre malloc dans le nouveau nom)
-retirer tous les malloc qui n ont pas d init, c est dangereux et ca permet de raccourcir le nom (mettre malloc dans le nouveau nom)
-retirer tous les malloc qui n ont pas d init, c est dangereux et ca permet de raccourcir le nom (mettre malloc dans le nouveau nom)
-retirer tous les malloc qui n ont pas d init, c est dangereux et ca permet de raccourcir le nom (mettre malloc dans le nouveau nom)
-
-
-int* int_array_initval(size_t size, int init_val) {
-    int* array = int_array(size);
-    for (size_t i = 0; i < size; i++) {
-        array[i] = init_val;}
-    return array;
-}
-
-uint8_t* uint8_t_array_initval(size_t size, uint8_t init_val) {
-    uint8_t* array = uint8_t_array(size);
-    for (size_t i = 0; i < size; i++) {
-        array[i] = init_val;}
-    return array;   
-}
-
-uint16_t* uint16_t_array_initval(size_t size, uint16_t init_val) {
-    uint16_t* array = uint16_t_array(size);
-    for (size_t i = 0; i < size; i++) {
-        array[i] = init_val;}
-    return array;
-}
-
-uint32_t* uint32_t_array_initval(size_t size, uint32_t init_val) {
-    uint32_t* array = uint32_t_array(size);
-    for (size_t i = 0; i < size; i++) {
-        array[i] = init_val;}
-    return array;
+uint8_t** malloc_uint8_t_matrix(size_t n, size_t m, uint8_t init_val) {
+    uint8_t** matrix = (uint8_t**)malloc(n * sizeof(uint8_t*));
+    if (matrix == NULL) {
+        die("Failed to allocate memory for uint8_t matrix");
+    }
+    uint8_t* data = (uint8_t*)malloc(n * m * sizeof(uint8_t));
+    if (data == NULL) {
+        die("Failed to allocate memory for uint8_t matrix data");
+    }
+    for (size_t i = 0; i < n; i++) {
+        matrix[i] = &data[m * i];
+        for (size_t j = 0; j < m; j++) {
+            matrix[i][j] = init_val;
+        }
+    }
+    return matrix;
 }
 
 void free_matrix(void** matrix){
@@ -182,123 +229,6 @@ void free_matrix(void** matrix){
 void free_array(void* array){
     free(array);
 }
-
-float** float_matrix(size_t n, size_t m) {
-    float* data = (float*)malloc(n * m * sizeof(float));
-    float** matrix = (float**)malloc(n * sizeof(float*));
-    matrix[0] = data;
-    for(size_t i = 1; i < n; i++)
-        matrix[i] = &data[m * i];
-    return matrix;
-}
-
-double**  double_matrix(size_t n, size_t m) {
-    double* data = (double*)malloc(n * m * sizeof(double));
-    double** matrix = (double**)malloc(n * sizeof(double*));
-    matrix[0] = data;
-    for(size_t i = 1; i < n; i++)
-        matrix[i] = &data[m * i];
-    return matrix;
-}
-
-int** int_matrix(size_t n, size_t m) {
-    int* data = (int*)malloc(n * m * sizeof(int));
-    int** matrix = (int**)malloc(n * sizeof(int*));
-    matrix[0] = data;
-    for(size_t i = 1; i < n; i++)
-        matrix[i] = &data[m * i];
-    return matrix;
-}
-
-uint8_t** uint8_t_matrix(size_t n, size_t m) {
-    uint8_t* data = (uint8_t*)malloc(n * m * sizeof(uint8_t));
-    uint8_t** matrix = (uint8_t**)malloc(n * sizeof(uint8_t*));
-    matrix[0] = data;
-    for(size_t i = 1; i < n; i++)
-        matrix[i] = &data[m * i];
-    return matrix;
-}
-
-uint16_t** uint16_t_matrix(size_t n, size_t m) {
-    uint16_t* data = (uint16_t*)malloc(n * m * sizeof(uint16_t));
-    uint16_t** matrix = (uint16_t**)malloc(n * sizeof(uint16_t*));
-    matrix[0] = data;
-    for(size_t i = 1; i < n; i++)
-        matrix[i] = &data[m * i];
-    return matrix;
-}
-
-uint32_t** uint32_t_matrix(size_t n, size_t m) {
-    uint32_t* data = (uint32_t*)malloc(n * m * sizeof(uint32_t));
-    uint32_t** matrix = (uint32_t**)malloc(n * sizeof(uint32_t*));
-    matrix[0] = data;
-    for(size_t i = 1; i < n; i++)
-        matrix[i] = &data[m * i];
-    return matrix;
-}
-
-float** float_matrix_initval(size_t n, size_t m, float init_val) {
-    float** matrix = float_matrix(n, m);
-    for (size_t i = 0; i < n; i++) {
-        for (size_t j = 0; j < m; j++) {
-            matrix[i][j] = init_val;
-        }
-    }
-    return matrix;
-}
-
-double** double_matrix_initval(size_t n, size_t m, double init_val) {
-    double** matrix = double_matrix(n, m);
-    for (size_t i = 0; i < n; i++) {
-        for (size_t j = 0; j < m; j++) {
-            matrix[i][j] = init_val;
-        }
-    }
-    return matrix;
-}
-
-int** int_matrix_initval(size_t n, size_t m, int init_val) {
-    int** matrix = int_matrix(n, m);
-    for (size_t i = 0; i < n; i++) {
-        for (size_t j = 0; j < m; j++) {
-            matrix[i][j] = init_val;
-        }
-    }
-    return matrix;
-}
-
-uint8_t** uint8_t_matrix_initval(size_t n, size_t m, uint8_t init_val) {
-    uint8_t** matrix = uint8_t_matrix(n, m);
-    for (size_t i = 0; i < n; i++) {
-        for (size_t j = 0; j < m; j++) {
-            matrix[i][j] = init_val;
-        }
-    }
-    return matrix;
-}
-
-uint16_t** uint16_t_matrix_initval(size_t n, size_t m, uint16_t init_val) {
-    uint16_t** matrix = uint16_t_matrix(n, m);
-    for (size_t i = 0; i < n; i++) {
-        for (size_t j = 0; j < m; j++) {
-            matrix[i][j] = init_val;
-        }
-    }
-    return matrix;
-}
-
-uint32_t** uint32_t_matrix_initval(size_t n, size_t m, uint32_t init_val) {
-    uint32_t** matrix = uint32_t_matrix(n, m);
-    for (size_t i = 0; i < n; i++) {
-        for (size_t j = 0; j < m; j++) {
-            matrix[i][j] = init_val;
-        }
-    }
-    return matrix;
-}
-
-
-
 
 
 void test_speed_flt_vs_dbl_no_cache_effects(){

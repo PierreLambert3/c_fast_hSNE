@@ -53,7 +53,7 @@ void init_neighbours_randomly(uint32_t N, uint32_t M, float** X, uint32_t K, uin
             while(j_candidate==i) {
                 j_candidate = rand_uint32_between(&rand_state, 0, N-1);}
             neighs[i][k] = j_candidate;
-            float dist = f_euclidean(X[i], X[j_candidate], M);
+            float dist = f_euclidean_sq(X[i], X[j_candidate], M);
             if (dist > furthest_neighdist) {
                 furthest_neighdist = dist;}
         }
@@ -61,8 +61,10 @@ void init_neighbours_randomly(uint32_t N, uint32_t M, float** X, uint32_t K, uin
     }
 }
 
-int main() {
 
+
+
+int main() {
     // ~~~~~  general startup  ~~~~~
     reset_console_colour();
     printf("starting program...\n");
@@ -71,15 +73,15 @@ int main() {
     // seed the random number generator for the threads
     uint32_t rand_state_main_thread = (uint32_t)time(NULL);
 
-    // ~~~~~  initialise SDL  ~~~~~
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-        fprintf(stderr, "SDL_Init  Error: %s\n", SDL_GetError());
-        return 1;
-    }
+    
 
     // ~~~~~  initialise the common variables for the threads  ~~~~~
     const uint32_t  Mld = 2;
     float     target_perplexity = 50.0f;
+    float     LD_kernel_alpha   = 1.0f;
+    pthread_mutex_t mutex_kernel_LD_alpha;
+    if(pthread_mutex_init(&mutex_kernel_LD_alpha, NULL) != 0) {
+        dying_breath("pthread_mutex_init mutex_kernel_LD_alpha failed");}
     uint32_t  Khd = (uint32_t)roundf(3.0f * target_perplexity);
     uint32_t  Kld = 10;
     float     momentum_alpha    = 0.95f; // TODO : modulated by temporal alignment
@@ -92,37 +94,36 @@ int main() {
     // 1: load & normalise the MNIST dataset
     uint32_t  N = 60000;
     uint32_t  Mhd = 28*28;
-    float**   Xhd = float_matrix_initval(N, Mhd, -42.0f);
-    uint32_t* Y = uint32_t_array_initval(N, 0);
+    float**   Xhd = malloc_float_matrix(N, Mhd, -42.0f);
+    uint32_t* Y   = malloc_uint32_t(N, 0);
     load_mnist(&N, &Mhd, Xhd, Y);
     normalise_float_matrix(Xhd, N, Mhd); 
     // create the mutex for each observation i
     pthread_mutex_t* mutexes_sizeN = mutexes_allocate_and_init(N);
     
     // 3: initialise the LD representation of the dataset as a random projection of Xhd
-    float**    Xld = float_matrix_initval(N, Mld, -41.0f);
+    float**    Xld = malloc_float_matrix(N, Mld, -41.0f);
     init_Xld(Xhd, Xld, N, Mhd, Mld);
-
     // 4: initialise the Nesterov momentum acceleration parameters
-    float**    Xld_momentum = float_matrix_initval(N, Mld, 0.0f);
-    /* float** Xld_EMA_gradalignement = float_matrix_initval(N, Mld, 1.0f); // TODO : this array will capture how well the recent gradients align with the momentum at their iteration. This is used to modulates the momentum_alpha*/
-    float**    Xld_nesterov = float_matrix(N, Mld);
-    float**    Xld_ghost    = float_matrix(N, Mld);
+    float**    Xld_momentum = malloc_float_matrix(N, Mld, 0.0f);
+    /* float** Xld_EMA_gradalignement = malloc_float_matrix(N, Mld, 1.0f); // TODO : this array will capture how well the recent gradients align with the momentum at their iteration. This is used to modulates the momentum_alpha*/
+    float**    Xld_nesterov = malloc_float_matrix(N, Mld, 0.0f);
+    float**    Xld_ghost    = malloc_float_matrix(N, Mld, 0.0f);
     memcpy(Xld_nesterov[0], Xld[0], N*Mld*sizeof(float)); 
     memcpy(Xld_ghost[0], Xld[0], N*Mld*sizeof(float)); 
 
     // 5: allocate for the estimated neighbour sets in both spaces
-    uint32_t** neighsHD = uint32_t_matrix_initval(N, Khd, 0); 
-    uint32_t** neighsLD = uint32_t_matrix_initval(N, Kld, 0);
-    float*     furthest_neighdists_HD = float_array_initval(N, 0.0f);
-    float*     furthest_neighdists_LD = float_array_initval(N, 0.0f);
+    uint32_t** neighsHD = malloc_uint32_t_matrix(N, Khd, 0); 
+    uint32_t** neighsLD = malloc_uint32_t_matrix(N, Kld, 0);
+    float*     furthest_neighdists_HD = malloc_float(N, 0.0f);
+    float*     furthest_neighdists_LD = malloc_float(N, 0.0f);
     init_neighbours_randomly(N, Mhd, Xhd, Khd, neighsHD, furthest_neighdists_HD);
     init_neighbours_randomly(N, Mld, Xld, Kld, neighsLD, furthest_neighdists_LD);
 
     // 6: allocate Q and P matrices, the HD radii, as well as Q_denom scalar
-    float**    Q       = float_matrix_initval(N, Kld, 1.0f);
-    float**    P       = float_matrix_initval(N, Khd, 1.0f);
-    float*     radii   = float_array_initval(N, 1.0f);
+    float**    Q       = malloc_float_matrix(N, Kld, 1.0f);
+    float**    P       = malloc_float_matrix(N, Khd, 1.0f);
+    float*     radii   = malloc_float(N, 1.0f);
     float      Q_denom = 1.0f * N * N;
     // initialise the Q_denom mutex
     pthread_mutex_t mutex_Qdenom;
@@ -136,7 +137,8 @@ int main() {
     // create LD neighbourhood discoverer
     NeighLDDiscoverer* neighLD_discoverer = (NeighLDDiscoverer*)malloc(sizeof(NeighLDDiscoverer));
     new_NeighLDDiscoverer(neighLD_discoverer, N, &rand_state_main_thread, n_threads_LDneigh,\
-        &mutex_Qdenom, mutexes_sizeN, Xld, Xhd, Mld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD, Q, &Q_denom);
+        &mutex_Qdenom, mutexes_sizeN, Xld, Xhd, Mld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD, Q, &Q_denom,\
+        &LD_kernel_alpha, &mutex_kernel_LD_alpha);
 
 
     // create the embedding maker
@@ -147,9 +149,7 @@ int main() {
     new_GuiManager(gui_manager, N, neighHD_discoverer, neighLD_discoverer, embedding_maker, &rand_state_main_thread);
     // start the GUI manager thread (which will start the HD neighbourhood discoverer thread too)
     start_thread_GuiManager(gui_manager);
-    // join on SDL thread...
-    int threadReturnValue;
-    SDL_WaitThread(gui_manager->sdl_thread, &threadReturnValue); 
+     
 
     /*
     TODO:

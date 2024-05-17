@@ -33,6 +33,7 @@ void destroy_EmbeddingMaker(EmbeddingMaker* thing){
 }
 
 void* routine_EmbeddingMaker(void* arg){
+    printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
     /* EmbeddingMaker* thing = (EmbeddingMaker*)arg;
     thing->isRunning = true;
     while (thing->isRunning) {
@@ -44,6 +45,7 @@ void* routine_EmbeddingMaker(void* arg){
             thing->isRunning = false;}
     }
     return NULL; */
+    printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
     return NULL; 
 }
 

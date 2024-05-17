@@ -12,6 +12,9 @@
 // size of chunks for subthreads, as a percentage of N
 #define SUBTHREADS_CHUNK_SIZE_PCT 0.05f
 
+// boolean that determines whether a custom fatser kernel should be used for q_ij
+#define USE_CUSTOM_QIJ_KERNEL false
+
 // speed at which the Q denominator is updated
 #define ALPHA_QDENOM (0.95f + ((1.f - 0.95f) * (1.f - SUBTHREADS_CHUNK_SIZE_PCT)))
 
@@ -20,6 +23,10 @@
 #define NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES 7u // same, for neighbours of neighbours and neighbours in other spaces
 #define NEIGH_NEAR_EXPLOITATION_HD_N_SAMPLES 7u // same, for neighbours of neighbours and neighbours in other spaces
 
+// int value for window size of the GUI
+#define GUI_W 800
+// 0.75 * GUI_W
+#define GUI_H (int) (0.75f * (float)GUI_W)
 
 // a set of 3 uint8_t values representing base terminal text colour
 #define TERMINAL_TEXT_COLOUR_R 220

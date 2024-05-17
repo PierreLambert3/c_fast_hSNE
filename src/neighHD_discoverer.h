@@ -19,7 +19,7 @@ typedef struct {
     uint32_t passes_since_reset;
     float    p_wakeup;
     uint32_t N;
-    int*     test_variable;
+    uint32_t*     test_variable;
 } NeighHDDiscoverer;
 
 void new_NeighHDDiscoverer(NeighHDDiscoverer* thing, uint32_t _N_, uint32_t* thread_rand_seed, uint32_t max_nb_of_subthreads);

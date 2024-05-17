@@ -1,9 +1,11 @@
 #include "neighLD_discoverer.h"
 
+
+
 void new_NeighLDDiscoverer(NeighLDDiscoverer* thing, uint32_t _N_, uint32_t* thread_rand_seed, uint32_t max_nb_of_subthreads,\
-        pthread_mutex_t* _mutex_Qdenom_, pthread_mutex_t* mutexes_sizeN, float** _Xld_, float** _Xhd_, uint32_t _Mld_, uint32_t _Khd_,\
-        uint32_t _Kld_, uint32_t** _neighsLD_, uint32_t** _neighsHD_,\
-        float* furthest_neighdists_LD, float** _Q_, float* _Qdenom_){
+    pthread_mutex_t* _mutex_Qdenom_, pthread_mutex_t* mutexes_sizeN, float** _Xld_, float** _Xhd_, uint32_t _Mld_, uint32_t _Khd_,\
+    uint32_t _Kld_, uint32_t** _neighsLD_, uint32_t** _neighsHD_, float* furthest_neighdists_LD, float** _Q_, float* _Qdenom_,\
+    float* _ptr_kernel_LD_alpha_, pthread_mutex_t* _mutex_kernel_LD_alpha_){
 
     // work-management data
     thing->isRunning = false;
@@ -12,7 +14,7 @@ void new_NeighLDDiscoverer(NeighLDDiscoverer* thing, uint32_t _N_, uint32_t* thr
     thing->N_subthreads_target    = max_nb_of_subthreads;
     thing->subthreads_chunck_size = 1 + floorf(SUBTHREADS_CHUNK_SIZE_PCT * (float)_N_);
     thing->subthreads             = (pthread_t*)malloc(sizeof(pthread_t) * max_nb_of_subthreads);
-    thing->threads_waiting_for_task = bool_array_initval(max_nb_of_subthreads, true);
+    thing->threads_waiting_for_task = malloc_bool(max_nb_of_subthreads, true);
     thing->subthread_data           = (SubthreadData*)malloc(sizeof(SubthreadData) * max_nb_of_subthreads);
     thing->subthreads_mutexes       = mutexes_allocate_and_init(max_nb_of_subthreads);
     pthread_mutex_init(&thing->mutex_N_subthreads_target, NULL);
@@ -29,8 +31,10 @@ void new_NeighLDDiscoverer(NeighLDDiscoverer* thing, uint32_t _N_, uint32_t* thr
     thing->furthest_neighdists_LD = furthest_neighdists_LD;
     thing->Q = _Q_;
     thing->ptr_Qdenom = _Qdenom_;
+    thing->ptr_kernel_LD_alpha = _ptr_kernel_LD_alpha_;
     thing->mutex_Qdenom  = _mutex_Qdenom_;
     thing->mutexes_sizeN = mutexes_sizeN;
+    thing->mutex_kernel_LD_alpha = _mutex_kernel_LD_alpha_;
 
     // initialize subthread internals
     for(uint32_t i = 0; i < max_nb_of_subthreads; i++){
@@ -50,6 +54,7 @@ void new_NeighLDDiscoverer(NeighLDDiscoverer* thing, uint32_t _N_, uint32_t* thr
         subthread_data->neighsHD = _neighsHD_;
         subthread_data->furthest_neighdists_LD = furthest_neighdists_LD;
         subthread_data->Q = _Q_;
+        subthread_data->kernel_LD_alpha = _ptr_kernel_LD_alpha_[0];
         // lock with mutex_Qdenom
         pthread_mutex_lock(thing->mutex_Qdenom);
         subthread_data->estimated_Qdenom = thing->ptr_Qdenom[0];
@@ -57,9 +62,9 @@ void new_NeighLDDiscoverer(NeighLDDiscoverer* thing, uint32_t _N_, uint32_t* thr
         subthread_data->mutexes_sizeN = mutexes_sizeN;
         subthread_data->thread_mutex = &thing->subthreads_mutexes[i];
         subthread_data->thread_waiting_for_task = &thing->threads_waiting_for_task[i];
-        subthread_data->random_indices_exploration  = uint32_t_array_initval(NEIGH_FAR_EXPLORATION_N_SAMPLES, 0);
-        subthread_data->random_indices_exploitation_LD = uint32_t_array_initval(NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES, 0);
-        subthread_data->random_indices_exploitation_HD = uint32_t_array_initval(NEIGH_NEAR_EXPLOITATION_HD_N_SAMPLES, 0);
+        subthread_data->random_indices_exploration  = malloc_uint32_t(NEIGH_FAR_EXPLORATION_N_SAMPLES, 0);
+        subthread_data->random_indices_exploitation_LD = malloc_uint32_t(NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES, 0);
+        subthread_data->random_indices_exploitation_HD = malloc_uint32_t(NEIGH_NEAR_EXPLOITATION_HD_N_SAMPLES, 0);
     }
 }
 
@@ -76,25 +81,58 @@ void destroy_NeighLDDiscoverer(NeighLDDiscoverer* thing){
     free(thing);
 }
 
+
+
+
+void attempt_to_add_neighbour(uint32_t i, uint32_t j, float euclsq_ij, SubthreadData* thing){
+    if(i == j){return;} // i and j are the same point (should not happen)
+    // 1: can trust dists in LD : recompute all dists to find the 2 furthest neighbours
+    float furthest_d_i = -1.0f;
+    float second_furthest_d_i = -1.0f;
+    uint32_t furthest_k = 0;
+    // !!!!!!!!!!!  unsafe here: j position is not locked !!!!!!!!!!!!!!!!!
+    pthread_mutex_lock(&thing->mutexes_sizeN[i]);
+    for(uint32_t k = 0; k < thing->Kld; k++){
+        if(thing->neighsLD[i][k] == j){
+            return;} // j is already a neighbour of i
+        float dist = f_euclidean_sq(thing->Xld[i], thing->Xld[thing->neighsLD[i][k]], thing->Mld);
+        if(dist > furthest_d_i){
+            second_furthest_d_i = furthest_d_i;
+            furthest_d_i = dist;
+            furthest_k = k;}
+        else if(dist > second_furthest_d_i){
+            second_furthest_d_i = dist;}
+    }
+    if(euclsq_ij < furthest_d_i){
+        // replace the furthest neighbour of i with the new neighbour j
+        thing->neighsLD[i][furthest_k] = j;
+        }
+    float new_furthest_d_i = euclsq_ij > second_furthest_d_i ? euclsq_ij : second_furthest_d_i;
+    thing->furthest_neighdists_LD[i] = new_furthest_d_i;
+    pthread_mutex_unlock(&thing->mutexes_sizeN[i]);
+}
+
 double  refine_LD_neighbours(SubthreadData* thing){
-    // first, generate random uint32_T for exploration and exploitation
+    printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
+    // -----------------  generate random uint32_T for exploration and exploitation -----------------
     // between 0 and N
     for(uint32_t i = 0; i < NEIGH_FAR_EXPLORATION_N_SAMPLES; i++){
-        thing->random_indices_exploration[i] = rand_uint32_between(&thing->rand_state, 0, thing->N);
-    }
+        thing->random_indices_exploration[i] = rand_uint32_between(&thing->rand_state, 0, thing->N);}
     // between 0 and Kld
     for(uint32_t i = 0; i < NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES; i++){
-        thing->random_indices_exploitation_LD[i] = rand_uint32_between(&thing->rand_state, 0, thing->Kld);
-    }
+        thing->random_indices_exploitation_LD[i] = rand_uint32_between(&thing->rand_state, 0, thing->Kld);}
     // between 0 and Khd
     for(uint32_t i = 0; i < NEIGH_NEAR_EXPLOITATION_HD_N_SAMPLES; i++){
-        thing->random_indices_exploitation_HD[i] = rand_uint32_between(&thing->rand_state, 0, thing->Khd);
-    }
+        thing->random_indices_exploitation_HD[i] = rand_uint32_between(&thing->rand_state, 0, thing->Khd);}
+    // -----------------  for each point: -----------------
+    // -----------------  find new neighbours -----------------
+    // -----------------  remember that the furthest_LD dists are not up to date -----------------
+    float kernel_LD_alpha = thing->kernel_LD_alpha;
     // variables for the denominator estimation
     double   dbl_acc_denom = 0.;
     uint32_t n_votes       = 0;
     // temp variables filled when mutex are acquired
-    float    euclsq_ij    = 0.0f;
+    float    euclsq_ij    = 1.0f;
     float    furthest_d_i = 1.0f;
     float    furthest_d_j = 1.0f;
     for(uint32_t i = thing->L; i < thing->R; i++){
@@ -103,45 +141,39 @@ double  refine_LD_neighbours(SubthreadData* thing){
         // We should be able to tell if j and i are also candidate based on the 2 dists ands the radius of i and j
         // ------------------------------------------------------
 
-        
-
-        // 2: exploration: random point j in [0, N[
-        uint32_t j = thing->random_indices_exploration[i%NEIGH_FAR_EXPLORATION_N_SAMPLES];
-        uint32_t i_1    = i < j ? i : j;
-        uint32_t i_2    = i < j ? j : i;
+        // 1: exploration: random point j in [0, N[
+        uint32_t j    = thing->random_indices_exploration[i%NEIGH_FAR_EXPLORATION_N_SAMPLES];
+        if(i == j){ j = thing->random_indices_exploration[(i+1)%NEIGH_FAR_EXPLORATION_N_SAMPLES];}
+        if(i == j){ continue;}
+        uint32_t i_1 = i < j ? i : j;
+        uint32_t i_2 = i < j ? j : i;
         pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
         pthread_mutex_lock(&thing->mutexes_sizeN[i_2]);
-        euclsq_ij      = f_euclidean_sq(thing->Xld[i], thing->Xld[j], thing->Mld);
+        euclsq_ij    = f_euclidean_sq(thing->Xld[i], thing->Xld[j], thing->Mld);
         furthest_d_i = thing->furthest_neighdists_LD[i];
         furthest_d_j = thing->furthest_neighdists_LD[j];
         pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
         pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]);
-        if(euclsq_ij < furthest_d_i)){
-            attempt_to_insert_neighbour(i, j, euclsq_ij, thing->neighsLD, thing->furthest_neighdists_LD, thing->Kld);
+        if(euclsq_ij < furthest_d_i){ // if j should be a new neighbour to i
+            attempt_to_add_neighbour(i, j, euclsq_ij, thing);
         }
-        id(euclsq_ij < furthest_d_j){
-            attempt_to_insert_neighbour(j, i, euclsq_ij, thing->neighsLD, thing->furthest_neighdists_LD, thing->Kld);
+        if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
+            attempt_to_add_neighbour(j, i, euclsq_ij, thing);
         }
+        // update the denominator estimation
+        dbl_acc_denom += (double) kernel_LD(euclsq_ij, kernel_LD_alpha);
+        n_votes++;
+        
+        // 2: exploitation: neighbour of neighbour
 
-        todo dans attempt:
-            considerer qu on doit l insérer 
-            a la tout fin: prendre le lock e re-check le furthest et enfin insert 
-            cf git quand meme et checker i different de j dans la fonction pour etre safe
-
-        /* template for a neighbour candidate point j towards i : 
-            uint32_t j      = <something>;
-            float   eucl_ij = 0.0f;
-            uint32_t i_1    = i < j ? i : j;
-            uint32_t i_2    = i < j ? j : i;
-            pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
-            pthread_mutex_lock(&thing->mutexes_sizeN[i_2]);
-            eucl_ij = f_euclidean(thing->Xld[i], thing->Xld[j], thing->Mld);
-            pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
-            pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]);
-        */
+        // 3: exploitation: neighbour in other space
         
     }
-    die();
+    printf("need to continue the function refine_LD_neighbours\n");
+    if(n_votes == 0){
+        printf("no votes for the denominator estimation, that's very concerning.\n");
+        return 0.0f;
+    }
     return (dbl_acc_denom * ( ((double) (thing->N*thing->N - thing->N)) / (double) n_votes));
 }
 
@@ -201,6 +233,10 @@ void* routine_NeighLDDiscoverer(void* arg){
         pthread_mutex_lock(&thing->mutex_N_subthreads_target);
         uint32_t now_N_subthreads_target = thing->N_subthreads_target;
         pthread_mutex_unlock(&thing->mutex_N_subthreads_target);
+        // get the current value of kernel_LD_alpha, for use locally
+        pthread_mutex_lock(thing->mutex_kernel_LD_alpha);
+        float    now_kernel_LD_alpha = thing->ptr_kernel_LD_alpha[0];
+        pthread_mutex_unlock(thing->mutex_kernel_LD_alpha);
 
         for(uint32_t i = 0; i < now_N_subthreads_target; i++){
             // if the subthread is waiting for a task: give a new task
@@ -212,6 +248,7 @@ void* routine_NeighLDDiscoverer(void* arg){
                 // 2: Assign a new task to the thread
                 thing->subthread_data[i].L = cursor;
                 thing->subthread_data[i].R = cursor + thing->subthreads_chunck_size > thing->N ? thing->N : cursor + thing->subthreads_chunck_size;
+                thing->subthread_data[i].kernel_LD_alpha = now_kernel_LD_alpha;
                 // 3: update the cursor in N for the next subthread
                 cursor += thing->subthreads_chunck_size;
                 if(cursor >= thing->N){
@@ -231,6 +268,10 @@ void* routine_NeighLDDiscoverer(void* arg){
             }
         }
         usleep(10000); // 1% of a second, prevent the thread from taking too much CPU time
+
+
+        // print the current value of Qdenom, for debugging
+        // printf("\n\n\nQdenom: %f\n", now_Qdenom);
 
         // artificially stop the thread, for now
         float random_number = rand_float_between(&thing->rand_state, 0.0f, 1.0f);

@@ -59,3 +59,22 @@ float f_euclidean_sq(float* Xi, float* Xj, uint32_t M){
         sum += diff * diff;}
     return sum;
 }
+
+inline float fast_powf(float a, float b) {
+    union {
+        float d;
+        int x[2];
+    } u = { a };
+    u.x[1] = (int)(b * (u.x[1] - 1064866805) + 1064866805);
+    u.x[0] = 0;
+    return u.d;
+}
+
+inline float kernel_LD(float eucl_sq, float alpha){
+    if(USE_CUSTOM_QIJ_KERNEL){
+       dying_breath("USE_CUSTOM_QIJ_KERNEL is not implemented");
+    }
+    else{
+        return 1.0f / powf(1.0f + eucl_sq / alpha, alpha);
+    }        
+}

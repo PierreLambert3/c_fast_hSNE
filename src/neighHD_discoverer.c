@@ -18,7 +18,7 @@ void new_NeighHDDiscoverer(NeighHDDiscoverer* thing, uint32_t _N_, uint32_t* thr
     thing->passes_since_reset = 0;
     thing->p_wakeup = 1.0f;
     thing->N = _N_;
-    thing->test_variable = int_array_initval(10, 0);
+    thing->test_variable = malloc_uint32_t(10, 0);
     printf("%d rand state\n", thing->rand_state);
 }
 
