@@ -82,8 +82,6 @@ void destroy_NeighLDDiscoverer(NeighLDDiscoverer* thing){
 }
 
 
-
-
 void attempt_to_add_neighbour(uint32_t i, uint32_t j, float euclsq_ij, SubthreadData* thing){
     if(i == j){return;} // i and j are the same point (should not happen)
     // 1: can trust dists in LD : recompute all dists to find the 2 furthest neighbours
@@ -91,29 +89,29 @@ void attempt_to_add_neighbour(uint32_t i, uint32_t j, float euclsq_ij, Subthread
     float second_furthest_d_i = -1.0f;
     uint32_t furthest_k = 0;
     // !!!!!!!!!!!  unsafe here: j position is not locked !!!!!!!!!!!!!!!!!
-    pthread_mutex_lock(&thing->mutexes_sizeN[i]);
+    pthread_mutex_lock(&thing->mutexes_sizeN[i]); //ici la merde
     for(uint32_t k = 0; k < thing->Kld; k++){
         if(thing->neighsLD[i][k] == j){
-            return;} // j is already a neighbour of i
+            pthread_mutex_unlock(&thing->mutexes_sizeN[i]);
+            return;// j is already a neighbour of i
+        } 
         float dist = f_euclidean_sq(thing->Xld[i], thing->Xld[thing->neighsLD[i][k]], thing->Mld);
         if(dist > furthest_d_i){
             second_furthest_d_i = furthest_d_i;
             furthest_d_i = dist;
             furthest_k = k;}
         else if(dist > second_furthest_d_i){
-            second_furthest_d_i = dist;}
+           second_furthest_d_i = dist;}
     }
     if(euclsq_ij < furthest_d_i){
-        // replace the furthest neighbour of i with the new neighbour j
-        thing->neighsLD[i][furthest_k] = j;
-        }
+        thing->neighsLD[i][furthest_k] = j;}
     float new_furthest_d_i = euclsq_ij > second_furthest_d_i ? euclsq_ij : second_furthest_d_i;
     thing->furthest_neighdists_LD[i] = new_furthest_d_i;
     pthread_mutex_unlock(&thing->mutexes_sizeN[i]);
 }
 
 double  refine_LD_neighbours(SubthreadData* thing){
-    printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
+    // printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
     // -----------------  generate random uint32_T for exploration and exploitation -----------------
     // between 0 and N
     for(uint32_t i = 0; i < NEIGH_FAR_EXPLORATION_N_SAMPLES; i++){
@@ -136,6 +134,7 @@ double  refine_LD_neighbours(SubthreadData* thing){
     float    furthest_d_i = 1.0f;
     float    furthest_d_j = 1.0f;
     for(uint32_t i = thing->L; i < thing->R; i++){
+        bool new_neigh = false;
         // -------------------  TODO  ---------------------------
         // clever algorithm with 3 or more point: i, j, and r. compute dists dir and drj.
         // We should be able to tell if j and i are also candidate based on the 2 dists ands the radius of i and j
@@ -143,33 +142,95 @@ double  refine_LD_neighbours(SubthreadData* thing){
 
         // 1: exploration: random point j in [0, N[
         uint32_t j    = thing->random_indices_exploration[i%NEIGH_FAR_EXPLORATION_N_SAMPLES];
-        if(i == j){ j = thing->random_indices_exploration[(i+1)%NEIGH_FAR_EXPLORATION_N_SAMPLES];}
-        if(i == j){ continue;}
-        uint32_t i_1 = i < j ? i : j;
-        uint32_t i_2 = i < j ? j : i;
-        pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
-        pthread_mutex_lock(&thing->mutexes_sizeN[i_2]);
-        euclsq_ij    = f_euclidean_sq(thing->Xld[i], thing->Xld[j], thing->Mld);
-        furthest_d_i = thing->furthest_neighdists_LD[i];
-        furthest_d_j = thing->furthest_neighdists_LD[j];
-        pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
-        pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]);
-        if(euclsq_ij < furthest_d_i){ // if j should be a new neighbour to i
-            attempt_to_add_neighbour(i, j, euclsq_ij, thing);
+        if(i != j){ 
+            uint32_t i_1 = i < j ? i : j;
+            uint32_t i_2 = i < j ? j : i;
+            pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
+            pthread_mutex_lock(&thing->mutexes_sizeN[i_2]); 
+            euclsq_ij    = f_euclidean_sq(thing->Xld[i], thing->Xld[j], thing->Mld);
+            furthest_d_i = thing->furthest_neighdists_LD[i];
+            furthest_d_j = thing->furthest_neighdists_LD[j];
+            pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
+            pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]); 
+            if(euclsq_ij < furthest_d_i){ // if j should be a new neighbour to i
+                attempt_to_add_neighbour(i, j, euclsq_ij, thing);
+                new_neigh = true;
+            }
+            if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
+                attempt_to_add_neighbour(j, i, euclsq_ij, thing);
+                new_neigh = true;
+            }
+            // update the denominator estimation
+            dbl_acc_denom += (double) kernel_LD(euclsq_ij, kernel_LD_alpha);
+            n_votes++;
         }
-        if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
-            attempt_to_add_neighbour(j, i, euclsq_ij, thing);
-        }
-        // update the denominator estimation
-        dbl_acc_denom += (double) kernel_LD(euclsq_ij, kernel_LD_alpha);
-        n_votes++;
         
         // 2: exploitation: neighbour of neighbour
+        uint32_t k1 = thing->random_indices_exploitation_LD[i%NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES];
+        uint32_t k2 = thing->random_indices_exploitation_LD[(i+1)%NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES];
+        j = thing->neighsLD[thing->neighsLD[i][k1]][k2];
+        if(i != j){
+            uint32_t i_1 = i < j ? i : j;
+            uint32_t i_2 = i < j ? j : i;
+            pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
+            pthread_mutex_lock(&thing->mutexes_sizeN[i_2]); 
+            euclsq_ij    = f_euclidean_sq(thing->Xld[i], thing->Xld[j], thing->Mld);
+            furthest_d_i = thing->furthest_neighdists_LD[i];
+            furthest_d_j = thing->furthest_neighdists_LD[j];
+            pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
+            pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]); 
+            if(euclsq_ij < furthest_d_i){ // if j should be a new neighbour to i
+                attempt_to_add_neighbour(i, j, euclsq_ij, thing);
+                new_neigh = true;
+            }
+            if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
+                attempt_to_add_neighbour(j, i, euclsq_ij, thing);
+                new_neigh = true;
+            }
+            // update the denominator estimation
+            dbl_acc_denom += (double) kernel_LD(euclsq_ij, kernel_LD_alpha);
+            n_votes++;
+        }
+        
+        j = thing->neighsLD[thing->neighsLD[i][k2]][k1];
+        if(i != j){
+            uint32_t i_1 = i < j ? i : j;
+            uint32_t i_2 = i < j ? j : i;
+            pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
+            pthread_mutex_lock(&thing->mutexes_sizeN[i_2]); 
+            euclsq_ij    = f_euclidean_sq(thing->Xld[i], thing->Xld[j], thing->Mld);
+            furthest_d_i = thing->furthest_neighdists_LD[i];
+            furthest_d_j = thing->furthest_neighdists_LD[j];
+            pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
+            pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]); 
+            if(euclsq_ij < furthest_d_i){ // if j should be a new neighbour to i
+                attempt_to_add_neighbour(i, j, euclsq_ij, thing);
+                new_neigh = true;
+            }
+            if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
+                attempt_to_add_neighbour(j, i, euclsq_ij, thing);
+                new_neigh = true;
+            }
+            // update the denominator estimation
+            dbl_acc_denom += (double) kernel_LD(euclsq_ij, kernel_LD_alpha);
+            n_votes++;
+        } 
+
+        faire en lock-free pour les reading (expensive )
+        verifier que zero sleep
+
+
+        keep track of closest location, and always check closest neigh s neighs  
+        in addition to these 2 ^
 
         // 3: exploitation: neighbour in other space
+        // TODO 
+
+
+        if(new_neigh){thing->N_new_neighs++;} // if a new neighbour was added
         
     }
-    printf("need to continue the function refine_LD_neighbours\n");
+    // printf("need to continue the function refine_LD_neighbours\n");
     if(n_votes == 0){
         printf("no votes for the denominator estimation, that's very concerning.\n");
         return 0.0f;
@@ -186,12 +247,12 @@ void* subroutine_NeighLDDiscoverer(void* arg){
         // subthread is waiting for a task to be assigned: unlock thread mutex and wait 2% of a second
         if(thing->thread_waiting_for_task[0]){ 
             pthread_mutex_unlock(thing->thread_mutex);
-            // sleep for 1% of a second
-            usleep(10000); 
+            usleep(10000);  // sleep for 1% of a second
         }
         // a task has been assigned to the subthread
         else{ 
             thing->estimated_Qdenom = 0.0f;
+            thing->N_new_neighs = 0;
             pthread_mutex_unlock(thing->thread_mutex);
             // refine neighbours in LD, and estimate the Q denominator
             double double_denom_estimation = refine_LD_neighbours(thing);
@@ -200,21 +261,21 @@ void* subroutine_NeighLDDiscoverer(void* arg){
             thing->estimated_Qdenom = (float) double_denom_estimation;
             thing->thread_waiting_for_task[0] = true;
             pthread_mutex_unlock(thing->thread_mutex);
-
-            /* // simulate computations
-            for(uint32_t rep = 0; rep < 100; rep++){
-                double random_double = (double) rand_float_between(&data->rand_state, 0.0f, 1.0f);
-                dbl_acc_denom += random_double;
-                n_votes++;
-            } */
-            //
         }
     }
     // (pour le deadlock juste copier i sur la stack avec lock puis demander le lock pour les j apres)
     return NULL;
 }
 
+verifier que max dist est strictement decroissante
+
 void* routine_NeighLDDiscoverer(void* arg){
+
+   /*  // debug: keep track of current values of furthest_neighdists_LD
+    float* debug_1_neighdists_LD = malloc_float(N, 0.0f);
+    float* debug_2_neighdists_LD = malloc_float(N, 0.0f); */
+
+
     NeighLDDiscoverer* thing = (NeighLDDiscoverer*)arg;
     thing->isRunning = true;
     // launch subthreads
@@ -222,7 +283,7 @@ void* routine_NeighLDDiscoverer(void* arg){
         if(pthread_create(&thing->subthreads[i], NULL, subroutine_NeighLDDiscoverer, &thing->subthread_data[i]) != 0){
             dying_breath("pthread_create subroutine_NeighLDDiscoverer failed");}
     }
-
+    uint32_t N_new_neighs = 0;
     uint32_t cursor = 0; // the cursor for the start of the next chunk
     while (thing->isRunning) {
         // get the current value of Qdenom, for use locally
@@ -238,6 +299,11 @@ void* routine_NeighLDDiscoverer(void* arg){
         float    now_kernel_LD_alpha = thing->ptr_kernel_LD_alpha[0];
         pthread_mutex_unlock(thing->mutex_kernel_LD_alpha);
 
+
+        // debug
+        tester ici v 
+        printf("diest furthes for 0 %f\n", thing->furthest_neighdists_LD[0]);
+
         for(uint32_t i = 0; i < now_N_subthreads_target; i++){
             // if the subthread is waiting for a task: give a new task
             float subthread_estimation_of_denom = -1.0f; 
@@ -245,14 +311,19 @@ void* routine_NeighLDDiscoverer(void* arg){
             if(thing->threads_waiting_for_task[i]){ // subthread is waiting for a task
                 // 1: temporarily save previous estimated denominator value
                 subthread_estimation_of_denom = thing->subthread_data[i].estimated_Qdenom;
+                N_new_neighs += thing->subthread_data[i].N_new_neighs;
                 // 2: Assign a new task to the thread
                 thing->subthread_data[i].L = cursor;
                 thing->subthread_data[i].R = cursor + thing->subthreads_chunck_size > thing->N ? thing->N : cursor + thing->subthreads_chunck_size;
                 thing->subthread_data[i].kernel_LD_alpha = now_kernel_LD_alpha;
                 // 3: update the cursor in N for the next subthread
+                // printf("assingning task to subthread %d, cursor: %d\n", i, cursor);
                 cursor += thing->subthreads_chunck_size;
                 if(cursor >= thing->N){
-                    cursor = 0;}
+                    cursor = 0;
+                    thing->N_new_neighs = N_new_neighs;
+                    N_new_neighs = 0;
+                }
 
                 thing->threads_waiting_for_task[i] = false;
             }
@@ -266,23 +337,10 @@ void* routine_NeighLDDiscoverer(void* arg){
                 thing->ptr_Qdenom[0] = thing->ptr_Qdenom[0]*ALPHA_QDENOM  + (1.0f - ALPHA_QDENOM) * subthread_estimation_of_denom;
                 pthread_mutex_unlock(thing->mutex_Qdenom);
             }
-        }
-        usleep(10000); // 1% of a second, prevent the thread from taking too much CPU time
-
-
-        // print the current value of Qdenom, for debugging
-        // printf("\n\n\nQdenom: %f\n", now_Qdenom);
-
-        // artificially stop the thread, for now
-        float random_number = rand_float_between(&thing->rand_state, 0.0f, 1.0f);
-        if(random_number < 0.002f){
-            thing->isRunning = false;
-            for(uint32_t i = 0; i < now_N_subthreads_target; i++){
-                thing->subthread_data[i].stop_this_thread = true;}
-        }
+        } 
+        usleep(10000); ici combien?// 1% of a second, prevent the thread from taking too much CPU time
     }
-
-
+    dying_breath("routine_NeighLDDiscoverer ended");
     return NULL;
 }
 

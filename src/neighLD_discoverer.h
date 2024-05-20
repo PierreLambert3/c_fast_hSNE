@@ -15,6 +15,7 @@ typedef struct {
     uint32_t rand_state;
     uint32_t      L;
     uint32_t      R;
+    uint32_t    N_new_neighs;
     float**    Xld;
     float**    Xhd;
     uint32_t   Mld;
@@ -61,6 +62,7 @@ typedef struct {
     float**    Q;
     float*     ptr_Qdenom;
     float*     ptr_kernel_LD_alpha;
+    uint32_t   N_new_neighs;
     pthread_mutex_t* mutex_Qdenom;  
     pthread_mutex_t* mutex_kernel_LD_alpha;  
     pthread_mutex_t* mutexes_sizeN;

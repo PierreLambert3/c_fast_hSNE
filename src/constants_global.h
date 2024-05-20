@@ -24,9 +24,11 @@
 #define NEIGH_NEAR_EXPLOITATION_HD_N_SAMPLES 7u // same, for neighbours of neighbours and neighbours in other spaces
 
 // int value for window size of the GUI
-#define GUI_W 800
+#define GUI_W 1050
 // 0.75 * GUI_W
-#define GUI_H (int) (0.75f * (float)GUI_W)
+#define GUI_H (int) (0.68f * (float)GUI_W)
+
+#define GUI_MS_UPDATE_QDENOM   50
 
 // a set of 3 uint8_t values representing base terminal text colour
 #define TERMINAL_TEXT_COLOUR_R 220
