@@ -18,7 +18,6 @@ typedef struct {
     uint32_t  period1;
     uint32_t  periodic_counter1;
     float     Qdenom_EMA;
-    float     pct_new_LD_neighs_EMA;
     NeighHDDiscoverer* neighHD_discoverer;
     NeighLDDiscoverer* neighLD_discoverer;
     EmbeddingMaker* embedding_maker;

@@ -216,12 +216,12 @@ double  refine_LD_neighbours(SubthreadData* thing){
             n_votes++;
         } 
 
-        faire en lock-free pour les reading (expensive )
+        /* faire en lock-free pour les reading (expensive )
         verifier que zero sleep
 
 
         keep track of closest location, and always check closest neigh s neighs  
-        in addition to these 2 ^
+        in addition to these 2 ^ */
 
         // 3: exploitation: neighbour in other space
         // TODO 
@@ -267,7 +267,7 @@ void* subroutine_NeighLDDiscoverer(void* arg){
     return NULL;
 }
 
-verifier que max dist est strictement decroissante
+// verifier que max dist est strictement decroissante
 
 void* routine_NeighLDDiscoverer(void* arg){
 
@@ -301,7 +301,7 @@ void* routine_NeighLDDiscoverer(void* arg){
 
 
         // debug
-        tester ici v 
+        // tester ici v 
         printf("diest furthes for 0 %f\n", thing->furthest_neighdists_LD[0]);
 
         for(uint32_t i = 0; i < now_N_subthreads_target; i++){
@@ -321,7 +321,10 @@ void* routine_NeighLDDiscoverer(void* arg){
                 cursor += thing->subthreads_chunck_size;
                 if(cursor >= thing->N){
                     cursor = 0;
-                    thing->N_new_neighs = N_new_neighs;
+                    pas bon les n_new_neighs car pas de garantie que c est le dernier bloc qui finira apres les autres 
+                    donc faire juste un nb_insert / N en EMA ici et le gui lit cette valeur
+                    // thing->N_new_neighs = N_new_neighs;
+                    // thing->N_new_neighs = (int) ((float)N_new_neighs * (float)thing->subthreads_chunck_size/(float)thing->N);
                     N_new_neighs = 0;
                 }
 
@@ -338,7 +341,7 @@ void* routine_NeighLDDiscoverer(void* arg){
                 pthread_mutex_unlock(thing->mutex_Qdenom);
             }
         } 
-        usleep(10000); ici combien?// 1% of a second, prevent the thread from taking too much CPU time
+        usleep(10000); // 1% of a second, prevent the thread from taking too much CPU time
     }
     dying_breath("routine_NeighLDDiscoverer ended");
     return NULL;
