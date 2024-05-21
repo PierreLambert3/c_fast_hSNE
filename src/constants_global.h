@@ -19,9 +19,9 @@
 #define ALPHA_QDENOM (0.95f + ((1.f - 0.95f) * (1.f - SUBTHREADS_CHUNK_SIZE_PCT)))
 
 // the number of random points randomly sampled during neighbour discovery, on all the dataset
-#define NEIGH_FAR_EXPLORATION_N_SAMPLES   5u
-#define NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES 7u // same, for neighbours of neighbours and neighbours in other spaces
-#define NEIGH_NEAR_EXPLOITATION_HD_N_SAMPLES 7u // same, for neighbours of neighbours and neighbours in other spaces
+#define NEIGH_FAR_EXPLORATION_N_SAMPLES   18u
+#define NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES 18u // keep higher than 12u
+#define NEIGH_NEAR_EXPLOITATION_HD_N_SAMPLES 18u // same, for neighbours of neighbours and neighbours in other spaces
 
 // int value for window size of the GUI
 #define GUI_W 1050

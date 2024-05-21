@@ -121,10 +121,10 @@ void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
         SDL_RenderFillRect(renderer, &rect);
         //draw point corresponding to the current value of Qdenom
         amber_colour(renderer);
-        int y = (int) (y_mid - 0.65f * pct_diff * graph_H);
+        int y = (int) (y_mid - pct_diff * graph_H);
         SDL_RenderDrawPoint(renderer, x_btm_left + x, y);
         // ------------ draw the pct of new LD neighbours -------------
-        float pct_now = (float) (thing->neighLD_discoverer->N_new_neighs)  / N;
+        float pct_now = thing->neighLD_discoverer->pct_new_neighs;
         x_btm_left = 0.55f * GUI_W + graph_W*1.05f;
         // draw a thing vertical rect as black to reset previously drawn things
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -135,8 +135,6 @@ void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
         y = (int) (y_btm_left - pct_now * graph_H);
         SDL_RenderDrawPoint(renderer, x_btm_left + x, y);
     }
-
-
     SDL_RenderPresent(renderer);
 }
 
@@ -155,6 +153,7 @@ void manage_frame_rate(GuiManager* thing, uint32_t elapsed_time, uint32_t target
     if(thing->ms_since_Qdenom_drawn <= 1){
         thing->periodic_counter1++;
         if(thing->periodic_counter1 >= thing->period1) {
+            dying_breath("periodic_counter1 reset\n");
             thing->periodic_counter1 = 0;}
     }
     thing->ms_since_Qdenom_drawn += (elapsed_time < target_frame_time) ? target_frame_time : elapsed_time;

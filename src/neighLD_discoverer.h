@@ -62,7 +62,7 @@ typedef struct {
     float**    Q;
     float*     ptr_Qdenom;
     float*     ptr_kernel_LD_alpha;
-    uint32_t   N_new_neighs;
+    float      pct_new_neighs;
     pthread_mutex_t* mutex_Qdenom;  
     pthread_mutex_t* mutex_kernel_LD_alpha;  
     pthread_mutex_t* mutexes_sizeN;
@@ -82,9 +82,9 @@ void* subroutine_NeighLDDiscoverer(void* arg);
 
 // refines the estimated set of LD neighbours for points between L and R
 // return the estimation of the total sum of q_ij based on the q_ij that were computed during the neigbhour refinenement process
-double  refine_LD_neighbours(SubthreadData* thing);
+void refine_LD_neighbours(SubthreadData* thing);
 // attempts to add j into j's neighbours,
 // at the end, recheck with the lock if the neighbour is still to be added, and add using the lock if so
-void attempt_to_add_neighbour(uint32_t i, uint32_t j, float euclsq_ij, SubthreadData* thing); 
+bool attempt_to_add_neighbour(uint32_t i, uint32_t j, float euclsq_ij, SubthreadData* thing); 
 
 #endif // NEIGHHD_DISCOVERER_H

@@ -27,12 +27,7 @@ void init_Xld(float** Xhd, float** Xld, uint32_t N, uint32_t Mhd, uint32_t Mld) 
     float Wproj[Mhd][Mld];
     for (uint32_t i = 0; i < Mhd; i++) {
         for (uint32_t j = 0; j < Mld; j++) {
-            if(rand_uint32_between(&rand_state, 0, 2) == 0){
-                Wproj[i][j] = rand_float_between(&rand_state, -0.5f, 1.0f);
-            }
-            else {
-                Wproj[i][j] = rand_float_between(&rand_state, -0.2f, 0.02f);
-            }
+            Wproj[i][j] = rand_float_between(&rand_state, -0.2f, 1.0f);
         }
     }
 
@@ -66,9 +61,6 @@ void init_neighbours_randomly(uint32_t N, uint32_t M, float** X, uint32_t K, uin
     }
 }
 
-
-
-
 int main() {
     // ~~~~~  general startup  ~~~~~
     reset_console_colour();
@@ -77,8 +69,6 @@ int main() {
     uint32_t machine_nb_processors = (uint32_t)sysconf(_SC_NPROCESSORS_ONLN);
     // seed the random number generator for the threads
     uint32_t rand_state_main_thread = (uint32_t)time(NULL);
-
-    
 
     // ~~~~~  initialise the common variables for the threads  ~~~~~
     const uint32_t  Mld = 2;
@@ -95,31 +85,22 @@ int main() {
     const uint32_t  n_threads_LDneigh   = 4;
     const uint32_t  n_threads_embedding = (machine_nb_processors - (1+1+n_threads_HDneigh+n_threads_LDneigh)) < n_threads_LDneigh ? n_threads_LDneigh : (machine_nb_processors - (1+1+n_threads_HDneigh+n_threads_LDneigh));
     printf("\n\nnb of threads for each role: HDneigh=%d, LDneigh=%d, embedding=%d, SDL=%d", n_threads_HDneigh, n_threads_LDneigh, n_threads_embedding, 1);
-    
     // 1: load & normalise the MNIST dataset
     printf("\nloading MNIST dataset...\n");
     uint32_t  N = 60000;
-    uint32_t  Mhd = 28*28;
+    // uint32_t  Mhd = 28*28;
+    uint32_t  Mhd = 50;
     uint32_t* Y   = malloc_uint32_t(N, 0);
     float**   Xhd = malloc_float_matrix(N, Mhd, -42.0f);
     load_mnist(&N, &Mhd, Xhd, Y);
     printf("normalising MNIST dataset...\n");
     normalise_float_matrix(Xhd, N, Mhd); 
-
-    /* ok cest mieux quand je normalise pas.
-     dans l ordre : 
-     1/  trouver pk ca prend du temps avant de runm: probablement un sleep 
-     2/  colorer avec les Y: faire des random colours avec Kmeans 
-     3/  voir si , sans normalisation, ca donne un PCA, et si avec, ca donne pareil  */
-
     printf("allocating internals...\n ");
     // create the mutex for each observation i
     pthread_mutex_t* mutexes_sizeN = mutexes_allocate_and_init(N);
-    
     // 3: initialise the LD representation of the dataset as a random projection of Xhd
     float**    Xld = malloc_float_matrix(N, Mld, -41.0f);
     init_Xld(Xhd, Xld, N, Mhd, Mld);
-
     // 4: initialise the Nesterov momentum acceleration parameters
     float**    Xld_momentum = malloc_float_matrix(N, Mld, 0.0f);
     /* float** Xld_EMA_gradalignement = malloc_float_matrix(N, Mld, 1.0f); // TODO : this array will capture how well the recent gradients align with the momentum at their iteration. This is used to modulates the momentum_alpha*/
@@ -127,7 +108,6 @@ int main() {
     float**    Xld_ghost    = malloc_float_matrix(N, Mld, 0.0f);
     memcpy(Xld_nesterov[0], Xld[0], N*Mld*sizeof(float)); 
     memcpy(Xld_ghost[0], Xld[0], N*Mld*sizeof(float)); 
-
     // 5: allocate for the estimated neighbour sets in both spaces
     uint32_t** neighsHD = malloc_uint32_t_matrix(N, Khd, 0); 
     uint32_t** neighsLD = malloc_uint32_t_matrix(N, Kld, 0);
@@ -137,12 +117,11 @@ int main() {
     init_neighbours_randomly(N, Mhd, Xhd, Khd, neighsHD, furthest_neighdists_HD);
     printf("initialising neighbours in LD...\n");
     init_neighbours_randomly(N, Mld, Xld, Kld, neighsLD, furthest_neighdists_LD);
-
     // 6: allocate Q and P matrices, the HD radii, as well as Q_denom scalar
     float**    Q       = malloc_float_matrix(N, Kld, 1.0f);
-    float**    P       = malloc_float_matrix(N, Khd, 1.0f);
-    float*     radii   = malloc_float(N, 1.0f);
     float      Q_denom = 1.0f * N * N;
+    float**    Psym    = malloc_float_matrix(N, Khd, 1.0f);
+    float*     radii   = malloc_float(N, 1.0f);
     // initialise the Q_denom mutex
     pthread_mutex_t mutex_Qdenom;
     if(pthread_mutex_init(&mutex_Qdenom, NULL) != 0) {
@@ -168,7 +147,16 @@ int main() {
     // start the GUI manager thread (which will start the HD neighbourhood discoverer thread too)
     printf("run\n");    
     start_thread_GuiManager(gui_manager);
-     
+
+    printf("for CUDA: dont do any I/O to GPU and just keep everything there\n");
+    printf("for CUDA: dont do any I/O to GPU and just keep everything there\n");
+    printf("for CUDA: dont do any I/O to GPU and just keep everything there\n");
+    printf("for CUDA: dont do any I/O to GPU and just keep everything there\n");
+    printf("for CUDA: dont do any I/O to GPU and just keep everything there\n");
+    printf("for CUDA: dont do any I/O to GPU and just keep everything there\n");
+    printf("for CUDA: dont do any I/O to GPU and just keep everything there\n");
+    printf("for CUDA: dont do any I/O to GPU and just keep everything there\n");
+    printf("for CUDA: dont do any I/O to GPU and just keep everything there\n");
 
     // wait for the GUI thread to finish
     pthread_join(neighHD_discoverer->thread, NULL);
