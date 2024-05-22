@@ -17,14 +17,12 @@ typedef struct {
     uint32_t      R;
     uint32_t    N_new_neighs;
     float**    Xld;
-    float**    Xhd;
     uint32_t   Mld;
     uint32_t   Khd;
     uint32_t   Kld;
     uint32_t** neighsLD;
     uint32_t** neighsHD;
     float*     furthest_neighdists_LD;
-    float**    Q;
     float      estimated_Qdenom;
     float kernel_LD_alpha;
     bool* thread_waiting_for_task;
@@ -52,14 +50,13 @@ typedef struct {
     SubthreadData* subthread_data;
     uint32_t   N;
     float**    Xld;
-    float**    Xhd;
     uint32_t   Mld;
     uint32_t   Khd;
     uint32_t   Kld;
     uint32_t** neighsLD;
     uint32_t** neighsHD;
     float*     furthest_neighdists_LD;
-    float**    Q;
+
     float*     ptr_Qdenom;
     float*     ptr_kernel_LD_alpha;
     float      pct_new_neighs;

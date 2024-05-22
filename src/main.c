@@ -81,9 +81,9 @@ int main() {
     uint32_t  Kld = 10;
     float     momentum_alpha    = 0.95f; // TODO : modulated by temporal alignment
     float     nesterov_alpha    = 0.05f;
-    const uint32_t  n_threads_HDneigh   = 1;
-    const uint32_t  n_threads_LDneigh   = 4;
-    const uint32_t  n_threads_embedding = (machine_nb_processors - (1+1+n_threads_HDneigh+n_threads_LDneigh)) < n_threads_LDneigh ? n_threads_LDneigh : (machine_nb_processors - (1+1+n_threads_HDneigh+n_threads_LDneigh));
+    uint32_t  n_threads_HDneigh   = 1u + (uint32_t) ((float)machine_nb_processors * 0.2);
+    uint32_t  n_threads_LDneigh   = 1u + (uint32_t) ((float)machine_nb_processors * 0.3);
+    uint32_t  n_threads_embedding = 1u + (uint32_t) ((float)machine_nb_processors * 0.4);
     printf("\n\nnb of threads for each role: HDneigh=%d, LDneigh=%d, embedding=%d, SDL=%d", n_threads_HDneigh, n_threads_LDneigh, n_threads_embedding, 1);
     // 1: load & normalise the MNIST dataset
     printf("\nloading MNIST dataset...\n");
@@ -130,7 +130,9 @@ int main() {
     printf("initialising workers...\n");
     // create HD neighbourhood discoverer
     NeighHDDiscoverer* neighHD_discoverer = (NeighHDDiscoverer*)malloc(sizeof(NeighHDDiscoverer));
-    new_NeighHDDiscoverer(neighHD_discoverer, N, &rand_state_main_thread, n_threads_HDneigh);
+    new_NeighHDDiscoverer(neighHD_discoverer, N, Mhd, &rand_state_main_thread, n_threads_HDneigh,\
+        mutexes_sizeN, Xhd, Khd, Kld, neighsHD, neighsLD,\
+        furthest_neighdists_HD, Psym);
     // create LD neighbourhood discoverer
     NeighLDDiscoverer* neighLD_discoverer = (NeighLDDiscoverer*)malloc(sizeof(NeighLDDiscoverer));
     new_NeighLDDiscoverer(neighLD_discoverer, N, &rand_state_main_thread, n_threads_LDneigh,\

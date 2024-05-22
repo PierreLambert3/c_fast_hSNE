@@ -10,7 +10,31 @@
 #include "constants_global.h"
 
 typedef struct {
-      
+    bool     stop_this_thread;
+    uint32_t N;
+    uint32_t rand_state;
+    uint32_t      L;
+    uint32_t      R;
+    uint32_t    N_new_neighs;
+    float**    Xhd;
+    uint32_t   Mhd;
+    uint32_t   Khd;
+    uint32_t   Kld;
+    uint32_t** neighsHD;
+    uint32_t** neighsLD;
+    float*     furthest_neighdists_HD;
+    float**    Pasym;
+    float*     Pasym_sumJ_Pij;
+    bool*      flag_neigh_update;
+    float**    Psym;
+    float*     radii;
+    
+    bool* thread_waiting_for_task;
+    pthread_mutex_t* mutexes_sizeN;
+    pthread_mutex_t* thread_mutex;
+    uint32_t*    random_indices_exploration;    
+    uint32_t*    random_indices_exploitation_HD;    
+    uint32_t*    random_indices_exploitation_LD;
 } SubthreadHD_data;
 
 typedef struct {
@@ -29,6 +53,7 @@ typedef struct {
     // Algorithm and subthread data: for determining LD neighbours, Q, and Qdenom
     SubthreadHD_data* subthreadHD_data;
     uint32_t   N;
+    uint32_t   Mhd;
     float**    Xhd;
     uint32_t   Khd;
     uint32_t   Kld;
@@ -36,21 +61,25 @@ typedef struct {
     uint32_t** neighsLD;
     float*     furthest_neighdists_HD;
 
-    float**    Pasy;
-    float*     Pasy_sumJ_Pij;
+    float**    Pasym;
+    float*     Pasym_sumJ_Pij;
     bool*      flag_neigh_update;
-    float**    Psym_GT;
+    float**    Psym;
     float*     radii;
     float      pct_new_neighs;
     pthread_mutex_t* mutexes_sizeN;
 
 } NeighHDDiscoverer;
 
-void new_NeighHDDiscoverer(NeighHDDiscoverer* thing, uint32_t _N_, uint32_t* thread_rand_seed, uint32_t max_nb_of_subthreads,\
+void new_NeighHDDiscoverer(NeighHDDiscoverer* thing, uint32_t _N_, uint32_t _Mhd_, uint32_t* thread_rand_seed, uint32_t max_nb_of_subthreads,\
     pthread_mutex_t* mutexes_sizeN, float** _Xhd_, uint32_t _Khd_, uint32_t _Kld_, uint32_t** _neighsHD_, uint32_t** _neighsLD_,\
     float* furthest_neighdists_HD, float** _Psym_GT_);
 void  destroy_NeighHDDiscoverer(NeighHDDiscoverer* thing);
 void* routine_NeighHDDiscoverer(void* arg);
 void start_thread_NeighHDDiscoverer(NeighHDDiscoverer* thing);
+
+void* subroutine_NeighLDDiscoverer(void* arg);
+void refine_HD_interactions(SubthreadHD_data* thing);
+
 
 #endif // NEIGHHD_DISCOVERER_H
