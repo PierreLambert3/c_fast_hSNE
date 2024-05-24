@@ -19,6 +19,10 @@ There are 4 main threads by essence:
 
 GUI:  with SDL2
 CUDA on the algorithm: optional
+
+
+SDL2 
+also need to install the SDL2_ttf library: sudo apt-get install libsdl2-ttf-dev and makefile change
 */
 
 void init_Xld(float** Xhd, float** Xld, uint32_t N, uint32_t Mhd, uint32_t Mld) {
@@ -72,18 +76,24 @@ int main() {
 
     // ~~~~~  initialise the common variables for the threads  ~~~~~
     const uint32_t  Mld = 2;
-    float     target_perplexity = 50.0f;
+    float     perplexity = 50.0f;
+    pthread_mutex_t mutex_perplexity;
+    if(pthread_mutex_init(&mutex_perplexity, NULL) != 0) {
+        dying_breath("pthread_mutex_init mutex_perplexity failed");}
     float     LD_kernel_alpha   = 1.0f;
     pthread_mutex_t mutex_kernel_LD_alpha;
     if(pthread_mutex_init(&mutex_kernel_LD_alpha, NULL) != 0) {
         dying_breath("pthread_mutex_init mutex_kernel_LD_alpha failed");}
-    uint32_t  Khd = (uint32_t)roundf(3.0f * target_perplexity);
+    uint32_t  Khd = (uint32_t)roundf(3.0f * perplexity);
     uint32_t  Kld = 10;
     float     momentum_alpha    = 0.95f; // TODO : modulated by temporal alignment
     float     nesterov_alpha    = 0.05f;
     uint32_t  n_threads_HDneigh   = 1u + (uint32_t) ((float)machine_nb_processors * 0.2);
     uint32_t  n_threads_LDneigh   = 1u + (uint32_t) ((float)machine_nb_processors * 0.3);
     uint32_t  n_threads_embedding = 1u + (uint32_t) ((float)machine_nb_processors * 0.4);
+    /* uint32_t  n_threads_HDneigh   = machine_nb_processors - 2u;
+    uint32_t  n_threads_LDneigh   = 1u ;
+    uint32_t  n_threads_embedding = 1u ; */
     printf("\n\nnb of threads for each role: HDneigh=%d, LDneigh=%d, embedding=%d, SDL=%d", n_threads_HDneigh, n_threads_LDneigh, n_threads_embedding, 1);
     // 1: load & normalise the MNIST dataset
     printf("\nloading MNIST dataset...\n");
@@ -132,7 +142,8 @@ int main() {
     NeighHDDiscoverer* neighHD_discoverer = (NeighHDDiscoverer*)malloc(sizeof(NeighHDDiscoverer));
     new_NeighHDDiscoverer(neighHD_discoverer, N, Mhd, &rand_state_main_thread, n_threads_HDneigh,\
         mutexes_sizeN, Xhd, Khd, Kld, neighsHD, neighsLD,\
-        furthest_neighdists_HD, Psym);
+        furthest_neighdists_HD, Psym,\
+        &perplexity, &mutex_perplexity);
     // create LD neighbourhood discoverer
     NeighLDDiscoverer* neighLD_discoverer = (NeighLDDiscoverer*)malloc(sizeof(NeighLDDiscoverer));
     new_NeighLDDiscoverer(neighLD_discoverer, N, &rand_state_main_thread, n_threads_LDneigh,\

@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <SDL.h>
+#include <SDL2/SDL_ttf.h>
 
 #include "mylibs/system.h"
 #include "constants_global.h"

@@ -82,6 +82,6 @@ void* subroutine_NeighLDDiscoverer(void* arg);
 void refine_LD_neighbours(SubthreadData* thing);
 // attempts to add j into j's neighbours,
 // at the end, recheck with the lock if the neighbour is still to be added, and add using the lock if so
-bool attempt_to_add_neighbour(uint32_t i, uint32_t j, float euclsq_ij, SubthreadData* thing); 
+bool attempt_to_add_LD_neighbour(uint32_t i, uint32_t j, float euclsq_ij, SubthreadData* thing); 
 
 #endif // NEIGHHD_DISCOVERER_H

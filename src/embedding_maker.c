@@ -28,6 +28,10 @@ when computing the Qij part of gradients: define them such that the Qij_denom
 is dividing the sum after the loops (since it's a value shaed for all points)
 */
 
+/*
+sous-poudrer le tout avec des gradients de MDS
+*/
+
 void destroy_EmbeddingMaker(EmbeddingMaker* thing){
     free(thing);
 }

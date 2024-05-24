@@ -1,11 +1,28 @@
 #include "gui_manager.h"
 
+void lavender_colour(SDL_Renderer* renderer) {
+    const int lavender_r = 220;
+    const int lavender_g = 220;
+    const int lavender_b = 250;
+    SDL_SetRenderDrawColor(renderer, lavender_r, lavender_g, lavender_b, 255);
+}
 
 void amber_colour(SDL_Renderer* renderer) {
     const int amber_r = 167;
     const int amber_g = 80;
     const int amber_b = 0;
     SDL_SetRenderDrawColor(renderer, amber_r, amber_g, amber_b, 255);
+}
+
+
+
+void draw_text(char* text, SDL_Renderer* renderer, TTF_Font* font, int x, int y, SDL_Color colour) {
+    SDL_Surface* text_surface = TTF_RenderText_Solid(font, text, colour);
+    SDL_Texture* text_texture = SDL_CreateTextureFromSurface(renderer, text_surface);
+    SDL_Rect text_rect = {x, y, text_surface->w, text_surface->h};
+    SDL_RenderCopy(renderer, text_texture, NULL, &text_rect);
+    SDL_FreeSurface(text_surface);
+    SDL_DestroyTexture(text_texture);
 }
 
 void new_GuiManager(GuiManager* thing, uint32_t _N_, uint32_t* _Y_, NeighHDDiscoverer* _neighHD_discoverer_,  NeighLDDiscoverer* _neighLD_discoverer_, EmbeddingMaker* _embedding_maker_, uint32_t* thread_rand_seed) {
@@ -15,6 +32,8 @@ void new_GuiManager(GuiManager* thing, uint32_t _N_, uint32_t* _Y_, NeighHDDisco
     thing->Y = _Y_;
     thing->period1 = 200;
     thing->periodic_counter1 = 0;
+    thing->elapsed_1 = 0u;
+    thing->timestamp_1 = SDL_GetTicks();
     pthread_mutex_lock(_neighLD_discoverer_->mutex_Qdenom);
     thing->Qdenom_EMA = 1.0f;
     pthread_mutex_unlock(_neighLD_discoverer_->mutex_Qdenom);
@@ -45,6 +64,8 @@ void destroy_GuiManager(GuiManager* thing) {
     free(thing);
 }
 
+
+
 void manage_events(SDL_Event* event, GuiManager* thing) {
     while (SDL_PollEvent(event)) {
         // if escape key is pressed, then quit
@@ -58,6 +79,7 @@ void manage_events(SDL_Event* event, GuiManager* thing) {
     }
     // printf("  NO event\n");
 }
+
 
 void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
 
@@ -112,7 +134,7 @@ void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
         float y_btm_left = 0.17f * GUI_H;
         float graph_W = embedding_pixel_size / 4;
         float graph_H = 0.17f * GUI_H;
-        float pct_diff = (qdenom - thing->Qdenom_EMA) / thing->Qdenom_EMA;
+        float pct_diff = (qdenom - thing->Qdenom_EMA) / (FLOAT_EPS + thing->Qdenom_EMA);
         int x = (int) (thing->periodic_counter1 * graph_W / thing->period1);
         float y_mid = y_btm_left - 0.5f * graph_H;
         // draw a thing vertical rect as black to reset previously drawn things
@@ -126,15 +148,38 @@ void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
         // ------------ draw the pct of new LD neighbours -------------
         float pct_now = thing->neighLD_discoverer->pct_new_neighs;
         x_btm_left = 0.55f * GUI_W + graph_W*1.05f;
-        // draw a thing vertical rect as black to reset previously drawn things
+        // draw x axis as a line
+        SDL_SetRenderDrawColor(renderer, 255, 205, 105, 255);
+        SDL_RenderDrawLine(renderer, x_btm_left, y_btm_left, x_btm_left + graph_W, y_btm_left);
+        // draw a thin vertical rect as black to reset previously drawn things
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_Rect rect2 = {x_btm_left + x, y_btm_left-graph_H, 1, graph_H};
         SDL_RenderFillRect(renderer, &rect2);
-        //draw point corresponding to the current value of Qdenom
+        //draw point corresponding to the current value of pct of new neighbours in LD
         amber_colour(renderer);
         y = (int) (y_btm_left - pct_now * graph_H);
         SDL_RenderDrawPoint(renderer, x_btm_left + x, y);
+        //draw point corresponding to the current value of pct of new neighbours in HD
+        lavender_colour(renderer);
+        float pct_now_HD = thing->neighHD_discoverer->pct_new_neighs;
+        y = (int) (y_btm_left - pct_now_HD * graph_H);
+        SDL_RenderDrawPoint(renderer, x_btm_left + x, y);
     }
+
+   
+    //clear a black rect 
+    int x0 = 5;
+    int y0 = (int) 0.9f * GUI_H;
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_Rect rect0 = {x0, y0-30, 100, 60};
+    SDL_RenderFillRect(renderer, &rect0);
+    char elapsed_time_str[100];
+    sprintf(elapsed_time_str, "%d", (int)thing->elapsed_1);
+    SDL_Color textColor = {255, 255, 255, 0};
+    draw_text(elapsed_time_str, renderer, thing->font, 10, 10, textColor);
+
+
+    // render the screen
     SDL_RenderPresent(renderer);
 }
 
@@ -143,7 +188,7 @@ void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
 void manage_frame_rate(GuiManager* thing, uint32_t elapsed_time, uint32_t target_frame_time) {
     // if point drawing too slow: draw points once every three frames
     if (elapsed_time < target_frame_time) {
-        // printf("sleep for %d\n", target_frame_time - elapsed_time);
+        printf("sleep for %d\n", target_frame_time - elapsed_time);
         SDL_Delay(target_frame_time - elapsed_time);
     }
     else{
@@ -153,7 +198,10 @@ void manage_frame_rate(GuiManager* thing, uint32_t elapsed_time, uint32_t target
     if(thing->ms_since_Qdenom_drawn <= 1){
         thing->periodic_counter1++;
         if(thing->periodic_counter1 >= thing->period1) {
-            dying_breath("periodic_counter1 reset\n");
+            // dying_breath("periodic_counter1 reset\n");
+            uint32_t now       = SDL_GetTicks();
+            thing->elapsed_1   = now - thing->timestamp_1;
+            thing->timestamp_1 = now;
             thing->periodic_counter1 = 0;}
     }
     thing->ms_since_Qdenom_drawn += (elapsed_time < target_frame_time) ? target_frame_time : elapsed_time;
@@ -178,6 +226,13 @@ int routine_GuiManager(void* arg) {
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     // create event
     SDL_Event event;
+    // init SDL font (thing->font)
+    if (TTF_Init() != 0) {
+        dying_breath("TTF_Init failed");}
+    thing->font = TTF_OpenFont("../assets/thefont.ttf", 24);
+    if (thing->font == NULL) {
+        dying_breath("TTF_OpenFont failed");}
+
     // main loop
     const uint32_t target_frame_rate = 30; // in frames per second
     const uint32_t target_frame_time = 1000 / target_frame_rate; // in milliseconds

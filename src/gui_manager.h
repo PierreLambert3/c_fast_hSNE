@@ -18,6 +18,14 @@ typedef struct {
     uint32_t  period1;
     uint32_t  periodic_counter1;
     float     Qdenom_EMA;
+
+    // timestampt for frame rate management
+    uint32_t timestamp_1;
+    uint32_t elapsed_1;
+
+    // SDL font
+    TTF_Font* font; // 
+
     NeighHDDiscoverer* neighHD_discoverer;
     NeighLDDiscoverer* neighLD_discoverer;
     EmbeddingMaker* embedding_maker;
