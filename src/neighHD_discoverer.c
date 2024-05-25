@@ -192,11 +192,8 @@ void refine_HD_neighbours(SubthreadHD_data* thing){
             if(euclsq_ij < furthest_d_i){ // if j should be a new neighbour to i
                 if(attempt_to_add_HD_neighbour(i, j, euclsq_ij, thing)){
                     new_neigh = true;
-
-                    // ------------------------------------------
                     // propagate the new neighbour to HD_NEIGH_PROPAGATION_N other neighbours
-                    for(uint32_t repetition = 0u; repetition < HD_NEIGH_PROPAGATION_N; repetition++){
-                        uint32_t k = thing->random_indices_exploitation_HD[(i+10+repetition)%NEIGH_NEAR_EXPLOITATION_HD_N_SAMPLES];
+                    for(uint32_t k = 0u; k < thing->Khd; k++){
                         uint32_t i_candidate = thing->neighsHD[i][k];
                         if(i_candidate != j){
                             uint32_t i_1 = i_candidate < j ? i_candidate : j;
@@ -218,7 +215,6 @@ void refine_HD_neighbours(SubthreadHD_data* thing){
                             }
                         }
                     }
-                    // ------------------------------------------
                 }
             }
             if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
@@ -246,11 +242,8 @@ void refine_HD_neighbours(SubthreadHD_data* thing){
             if(euclsq_ij < furthest_d_i){ // if j should be a new neighbour to i
                 if(attempt_to_add_HD_neighbour(i, j, euclsq_ij, thing)){
                     new_neigh = true;
-
-                    // ------------------------------------------
                     // propagate the new neighbour to 5 other neighbours
-                    for(uint32_t repetition = 0u; repetition < HD_NEIGH_PROPAGATION_N; repetition++){
-                        uint32_t k = thing->random_indices_exploitation_HD[(i+10+repetition)%NEIGH_NEAR_EXPLOITATION_HD_N_SAMPLES];
+                    for(uint32_t k = 0u; k < thing->Khd; k++){
                         uint32_t i_candidate = thing->neighsHD[i][k];
                         if(i_candidate != j){
                             uint32_t i_1 = i_candidate < j ? i_candidate : j;
@@ -272,8 +265,6 @@ void refine_HD_neighbours(SubthreadHD_data* thing){
                             }
                         }
                     }
-                    // ------------------------------------------
-                
                 }
             }
             if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
@@ -308,10 +299,8 @@ void refine_HD_neighbours(SubthreadHD_data* thing){
             if(euclsq_ij < furthest_d_i){ // if j should be a new neighbour to i
                 if(attempt_to_add_HD_neighbour(i, j, euclsq_ij, thing)){
                     new_neigh = true;
-                    // ------------------------------------------
                     // propagate the new neighbour to 5 other neighbours
-                    for(uint32_t repetition = 0u; repetition < HD_NEIGH_PROPAGATION_N; repetition++){
-                        uint32_t k = thing->random_indices_exploitation_HD[(i+10+repetition)%NEIGH_NEAR_EXPLOITATION_HD_N_SAMPLES];
+                    for(uint32_t k = 0u; k < thing->Khd; k++){
                         uint32_t i_candidate = thing->neighsHD[i][k];
                         if(i_candidate != j){
                             uint32_t i_1 = i_candidate < j ? i_candidate : j;
@@ -332,8 +321,7 @@ void refine_HD_neighbours(SubthreadHD_data* thing){
                                     new_neigh = true;}
                             }
                         }
-                    }
-                    // ------------------------------------------    
+                    } 
                 }
             }
             if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
@@ -406,10 +394,8 @@ void refine_HD_neighbours(SubthreadHD_data* thing){
             if(euclsq_ij < furthest_d_i){ // if j should be a new neighbour to i
                 if(attempt_to_add_HD_neighbour(i, j, euclsq_ij, thing)){
                     new_neigh = true;
-                    // ------------------------------------------
                     // propagate the new neighbour to HD_NEIGH_PROPAGATION_N other neighbours
-                    for(uint32_t repetition = 0u; repetition < HD_NEIGH_PROPAGATION_N; repetition++){
-                        uint32_t k = thing->random_indices_exploitation_HD[(i+10+repetition)%NEIGH_NEAR_EXPLOITATION_HD_N_SAMPLES];
+                    for(uint32_t k = 0u; k < thing->Khd; k++){
                         uint32_t i_candidate = thing->neighsHD[i][k];
                         if(i_candidate != j){
                             uint32_t i_1 = i_candidate < j ? i_candidate : j;
@@ -431,7 +417,6 @@ void refine_HD_neighbours(SubthreadHD_data* thing){
                             }
                         }
                     }
-                    // ------------------------------------------
                 }
             }
             if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
@@ -453,13 +438,8 @@ void refine_HD_neighbours(SubthreadHD_data* thing){
             if(euclsq_ij < furthest_d_i){ // if j should be a new neighbour to i
                 if(attempt_to_add_HD_neighbour(i, j, euclsq_ij, thing)){
                     new_neigh = true;
-TODO : finalement propager sur TOUS les K_hd (pas stochastique)
-car visiblement un gros N_PROPAGATION ne ralentit pas mais donne des meilleurs résultats: le faire 
-sur tous les voisins risque aussi de le faire
-                    // ------------------------------------------
                     // propagate the new neighbour to 5 other neighbours
-                    for(uint32_t repetition = 0u; repetition < HD_NEIGH_PROPAGATION_N; repetition++){
-                        uint32_t k = thing->random_indices_exploitation_HD[(i+10+repetition)%NEIGH_NEAR_EXPLOITATION_HD_N_SAMPLES];
+                    for(uint32_t k = 0u; k < thing->Khd; k++){
                         uint32_t i_candidate = thing->neighsHD[i][k];
                         if(i_candidate != j){
                             uint32_t i_1 = i_candidate < j ? i_candidate : j;
@@ -481,7 +461,6 @@ sur tous les voisins risque aussi de le faire
                             }
                         }
                     }
-                    // ------------------------------------------    
                 }
             }
             if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
