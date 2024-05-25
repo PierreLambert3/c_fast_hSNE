@@ -453,7 +453,9 @@ void refine_HD_neighbours(SubthreadHD_data* thing){
             if(euclsq_ij < furthest_d_i){ // if j should be a new neighbour to i
                 if(attempt_to_add_HD_neighbour(i, j, euclsq_ij, thing)){
                     new_neigh = true;
-
+TODO : finalement propager sur TOUS les K_hd (pas stochastique)
+car visiblement un gros N_PROPAGATION ne ralentit pas mais donne des meilleurs résultats: le faire 
+sur tous les voisins risque aussi de le faire
                     // ------------------------------------------
                     // propagate the new neighbour to 5 other neighbours
                     for(uint32_t repetition = 0u; repetition < HD_NEIGH_PROPAGATION_N; repetition++){
@@ -560,24 +562,22 @@ void update_radii(SubthreadHD_data* thing){
             continue;}
         thing->flag_neigh_update[i] = false;
 
-        /* // 2: check if current entropy is within the desired range
-        float H = obs_H(thing, i, thing->radii[i]);
-        if(H > L_entropy && H < R_entropy){
-            continue;} */
+        float beta_min = 0.0f;
+        float beta_max = 99999999999.0f;
+        float beta     = 0.0001f;
 
-        // 3: if not, change the radius to comply with the desired perplexity
-        float beta_mmtm  = 0.0f;
-        float beta_param = 1.0f / (thing->radii[i] + FLOAT_EPS);
-        float beta_nest  = beta_mmtm + beta_param;
-        bool converged  = false;
-        uint32_t iter = 0u;
-        while(!converged){
-            iter++;
+        // initilise max_beta and min_beta by growing beta
+        bool growing_beta = true;
+        uint32_t iter2 = 0u;
+        uint32_t iter1 = 0u;
+        while(growing_beta){
+            iter1++;
+            // compute entropy 
             float sumPi = 0.0f;
             for(uint32_t k = 0u; k < thing->Khd; k++){
                 uint32_t j = thing->neighsHD[i][k];
                 float eucl = thing->dists_neighHD[i][k];
-                temp_pijs[k] = expf(-eucl*beta_nest);
+                temp_pijs[k] = expf(-eucl*beta);
                 sumPi += temp_pijs[k];
             }
             sumPi = sumPi > 0.0f ? sumPi : FLOAT_EPS;
@@ -585,42 +585,58 @@ void update_radii(SubthreadHD_data* thing){
             for(uint32_t k = 0u; k < thing->Khd; k++){
                 sum_P_x_dist += (temp_pijs[k] / sumPi) * thing->dists_neighHD[i][k];
             }
-            float entropy = logf(sumPi) + beta_nest*sum_P_x_dist;
-            if(entropy > L_entropy && entropy < R_entropy){
-                converged = true;
-            }
-            else{
-                float H_error = desired_entropy - entropy > 0. ? 0.2 : -0.2; // derror/dH
-                float update  = 0.0f;
-                if(H_error < 0.0f){ // beta goes up
-                    float vector = (beta_nest * 1.3f) - beta_nest;
-                    update = H_error * vector;
-                }
-                else{
-                    float vector = (beta_nest * 0.7f) - beta_nest;
-                    update = H_error * vector;
-                }
-                beta_mmtm = mmtm_alpha * beta_mmtm + (1.0f - mmtm_alpha) * update;
-                beta_param = beta_param + 0.3 * beta_mmtm;
-                beta_nest  = beta_param + 0.7 * beta_mmtm;
+            float entropy = logf(sumPi) + beta*sum_P_x_dist;
+            float entropy_diff = entropy - desired_entropy;
+            if(entropy_diff > 0.){
+                beta_min = beta;
+                beta     = 5. * beta;
+            } else{
+                growing_beta = false;
+                beta_max = beta;
+                beta     = (beta_max + beta_min) / 2.;
             }
         }
 
-        // update the radius
-        thing->radii[i] = 1.0f / (beta_nest + FLOAT_EPS);
-        // recompute Pasym and denom with the nw radius
-        thing->Pasym_sumJ_Pij[i] = FLOAT_EPS;
-        for(uint32_t k = 0u; k < thing->Khd; k++){
-            thing->Pasym[i][k] = expf(-thing->dists_neighHD[i][k] / thing->radii[i]);
-            thing->Pasym_sumJ_Pij[i] += thing->Pasym[i][k];
+        // binary search for the beta that gives the desired entropy
+        bool converged = false;
+        while(!converged){
+            iter2++;
+            // compute entropy 
+            float sumPi = 0.0f;
+            for(uint32_t k = 0u; k < thing->Khd; k++){
+                uint32_t j = thing->neighsHD[i][k];
+                float eucl = thing->dists_neighHD[i][k];
+                temp_pijs[k] = expf(-eucl*beta);
+                sumPi += temp_pijs[k];
+            }
+            sumPi = sumPi > 0.0f ? sumPi : FLOAT_EPS;
+            float sum_P_x_dist = 0.0f;
+            for(uint32_t k = 0u; k < thing->Khd; k++){
+                sum_P_x_dist += (temp_pijs[k] / sumPi) * thing->dists_neighHD[i][k];
+            }
+            float entropy = logf(sumPi) + beta*sum_P_x_dist;
+            converged = entropy > L_entropy && entropy < R_entropy;
+            if(!converged){
+                float entropy_diff = entropy - desired_entropy;
+                if(entropy_diff > 0.){
+                    beta_min = beta;
+                    beta     = (beta + beta_max) / 2.;
+                } else{
+                    beta_max = beta;
+                    beta     = (beta + beta_min) / 2.;
+                }
+            }
         }
-        
-        //verify perplexity 
+        // update the radius
+        float new_radius = 1.0f / (beta + FLOAT_EPS);
+        pthread_mutex_lock(&thing->mutexes_sizeN[i]);
+        thing->radii[i] = new_radius;
+        pthread_mutex_unlock(&thing->mutexes_sizeN[i]);
+        /* //verify perplexity 
         float H = obs_H(thing, i, thing->radii[i]);
         float PP = expf(H);
-        printf("PP: %f  target: %f\n", PP, target_perplexity);
+        printf("PP: %f  target: %f\n", PP, target_perplexity); */
     }
-
 
     pthread_mutex_lock(thing->thread_mutex);
     thing->thread_waiting_for_task[0] = true;
@@ -638,40 +654,38 @@ inline float obs_H(SubthreadHD_data* thing, uint32_t i, float radius){
 }
 
 
+// no need ot lock the mutexes_sizeN[i] because we wait for all radii threads to be finished bfore this
 void recompute_Pasym(SubthreadHD_data* thing){
     for(uint32_t i = thing->L; i < thing->R; i++){
         float sumJ_Pij = 0.0f;
-        pthread_mutex_lock(&thing->mutexes_sizeN[i]);
+        // pthread_mutex_lock(&thing->mutexes_sizeN[i]);
         for(uint32_t k = 0u; k < thing->Khd; k++){
-            uint32_t j = thing->neighsHD[i][k];
-            float eucl = thing->dists_neighHD[i][k];
-            float radius = thing->radii[i];
-            float pij = expf(-eucl / radius) + FLOAT_EPS;
+            float pij = expf(-thing->dists_neighHD[i][k] / thing->radii[i]);
             thing->Pasym[i][k] = pij;
-            sumJ_Pij += pij;
+            sumJ_Pij          += pij;
         }
-        thing->Pasym_sumJ_Pij[i] = sumJ_Pij;
-        pthread_mutex_unlock(&thing->mutexes_sizeN[i]);
+        thing->Pasym_sumJ_Pij[i] = sumJ_Pij > 0.0f ? sumJ_Pij : FLOAT_EPS;
+        // pthread_mutex_unlock(&thing->mutexes_sizeN[i]);
     }
     pthread_mutex_lock(thing->thread_mutex);
     thing->thread_waiting_for_task[0] = true;
     pthread_mutex_unlock(thing->thread_mutex);
 }
 
+// no need ot lock the mutexes_sizeN[i] because we wait for Pasym to be fully computed before this
 void recompute_Psym(SubthreadHD_data* thing){
+    float multiplier = 1.0f / (2.0f * (float)thing->N);
     for(uint32_t i = thing->L; i < thing->R; i++){
         float sumJ_Pij = 0.0f;
-        pthread_mutex_lock(&thing->mutexes_sizeN[i]);
+        // pthread_mutex_lock(&thing->mutexes_sizeN[i]);
         for(uint32_t k = 0u; k < thing->Khd; k++){
             uint32_t j = thing->neighsHD[i][k];
-            float eucl = thing->dists_neighHD[i][k];
             float pij  = thing->Pasym[i][k] / thing->Pasym_sumJ_Pij[i];
-            float pji  = (expf(-eucl / thing->radii[j]) + FLOAT_EPS) / thing->Pasym_sumJ_Pij[j];
-            float p_symmetrised = (pij + pji) / (2.0f * (float)thing->N);
-            thing->Psym[i][k] = p_symmetrised;
+            float pji  = expf(-thing->dists_neighHD[i][k] / thing->radii[j]) / thing->Pasym_sumJ_Pij[j];
+            thing->Psym[i][k] = (pij + pji) * multiplier;
         }
         thing->Pasym_sumJ_Pij[i] = sumJ_Pij;
-        pthread_mutex_unlock(&thing->mutexes_sizeN[i]);
+        // pthread_mutex_unlock(&thing->mutexes_sizeN[i]);
     }
     pthread_mutex_lock(thing->thread_mutex);
     thing->thread_waiting_for_task[0] = true;
@@ -725,7 +739,9 @@ void wait_full_path_finished(NeighHDDiscoverer* thing){
             }
             pthread_mutex_unlock(&thing->subthreads_mutexes[i]);
         }
-        usleep(10000); // 1% of a second
+        if(all_waiting){
+            usleep(10000); // 1% of a second
+        }
     }
 }
 
@@ -738,9 +754,9 @@ void* routine_NeighHDDiscoverer(void* arg) {
             dying_breath("pthread_create routine_NeighHDDiscoverer_subthread failed");}
     }
     // work dispatcher loop
-    uint32_t cursor = 0u;
-    uint32_t N_neigh_finding = 3u;
-    uint32_t task_counter = 0u;
+    uint32_t cursor          = 0u;
+    uint32_t N_neigh_finding = 10u;
+    uint32_t task_counter    = 0u;
     while(thing->isRunning){
         // get the current value of N_subthreads_target, for use locally
         pthread_mutex_lock(&thing->mutex_N_subthreads_target);
@@ -768,16 +784,16 @@ void* routine_NeighHDDiscoverer(void* arg) {
                 cursor += thing->subthreads_chunck_size;
                 if(cursor >= thing->N){
                     cursor = 0u;
-
-                    // if: working on radius or Pasym: wait for all subthreads to finish (need radius for Pasym, need Pasym for Psym)
-                    if(task_number == 1u || task_number == 2u){
-                        wait_full_path_finished(thing);
-                    }
-
                     // update the counter that determines the job type
                     task_counter++;
                     if(task_counter >= N_neigh_finding + 3u){
                         task_counter = 0u;
+                    }
+
+                    // if: will start working on radius or on Psym
+                    task_number = (task_counter < N_neigh_finding) ? 0u : 1u + (task_counter - N_neigh_finding);
+                    if(task_number > 0u){
+                        wait_full_path_finished(thing);
                     }
                     
                     // print the mean furthest dists for all points in N
