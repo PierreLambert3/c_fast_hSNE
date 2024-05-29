@@ -8,7 +8,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "constants_global.h"
-
+todo
 // one struct for CPU-based embedding maker
 typedef struct {
     bool     running;
