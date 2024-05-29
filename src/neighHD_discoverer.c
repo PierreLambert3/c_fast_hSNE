@@ -3,7 +3,7 @@
 void new_NeighHDDiscoverer(NeighHDDiscoverer* thing, uint32_t _N_, uint32_t _M_, uint32_t* thread_rand_seed, uint32_t max_nb_of_subthreads,\
         pthread_mutex_t* mutexes_sizeN, float** _Xhd_, uint32_t _Khd_, uint32_t _Kld_, uint32_t** _neighsHD_, uint32_t** _neighsLD_,\
         float* furthest_neighdists_HD, float** _Psym_GT_,\
-    float* perplexity, pthread_mutex_t* mutex_perplexity){
+    float* perplexity, pthread_mutex_t* mutex_perplexity, pthread_mutex_t*  mutex_LDHD_balance, float* other_space_pct){
     // worker and subthread management
     thing->isRunning = false;
     thing->rand_state = (uint32_t)time(NULL) + ++thread_rand_seed[0];
@@ -14,7 +14,8 @@ void new_NeighHDDiscoverer(NeighHDDiscoverer* thing, uint32_t _N_, uint32_t _M_,
     thing->subthreads = (pthread_t*)malloc(sizeof(pthread_t) * max_nb_of_subthreads);
     thing->subthreads_mutexes = mutexes_allocate_and_init(max_nb_of_subthreads);
     thing->threads_waiting_for_task = malloc_bool(max_nb_of_subthreads, true);
-    pthread_mutex_init(&thing->mutex_N_subthreads_target, NULL);
+    thing->mutex_LDHD_balance       = mutex_LDHD_balance;
+    thing->other_space_pct          = other_space_pct;
 
     // initialise algorithm data on this thread
     thing->N = _N_;
@@ -685,7 +686,6 @@ void* subroutine_NeighHDDiscoverer(void* arg){
             uint32_t  task_number = thing->task_number;
             pthread_mutex_unlock(thing->thread_mutex);
             // do the task: refine HD neighbours, update radii and Pasym and Psym
-            printf("task number %d\n", task_number);
             if(task_number == 0){
                 refine_HD_neighbours(thing);
             }
@@ -738,9 +738,14 @@ void* routine_NeighHDDiscoverer(void* arg) {
     uint32_t task_counter    = 0u;
     while(thing->isRunning){
         // get the current value of N_subthreads_target, for use locally
-        pthread_mutex_lock(&thing->mutex_N_subthreads_target);
-        uint32_t now_N_subthreads_target = thing->N_subthreads_target;
-        pthread_mutex_unlock(&thing->mutex_N_subthreads_target);
+        // 50:50 : 0.5*max:0.5*max     10:90 : 0.1*max:0.9*max
+        pthread_mutex_lock(thing->mutex_LDHD_balance);
+        float other_pct = thing->other_space_pct[0];
+        float this_pct  = thing->pct_new_neighs;
+        float total     = FLOAT_EPS + other_pct + this_pct;
+        float ressource_allocation_ratio = this_pct / total;
+        uint32_t now_N_subthreads_target = (uint32_t)(ressource_allocation_ratio * (float)thing->N_reserved_subthreads);
+        pthread_mutex_unlock(thing->mutex_LDHD_balance);
         for(uint32_t i = 0u; i < now_N_subthreads_target; i++){
             // if the subthread is waiting for a task: give a new task
             pthread_mutex_lock(&thing->subthreads_mutexes[i]);

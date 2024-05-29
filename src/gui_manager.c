@@ -14,8 +14,6 @@ void amber_colour(SDL_Renderer* renderer) {
     SDL_SetRenderDrawColor(renderer, amber_r, amber_g, amber_b, 255);
 }
 
-
-
 void draw_text(char* text, SDL_Renderer* renderer, TTF_Font* font, int x, int y, SDL_Color colour) {
     SDL_Surface* text_surface = TTF_RenderText_Solid(font, text, colour);
     SDL_Texture* text_texture = SDL_CreateTextureFromSurface(renderer, text_surface);
@@ -30,14 +28,12 @@ void new_GuiManager(GuiManager* thing, uint32_t _N_, uint32_t* _Y_, NeighHDDisco
     thing->rand_state = (uint32_t)time(NULL) + ++thread_rand_seed[0];
     thing->N = _N_;
     thing->Y = _Y_;
-    thing->period1 = 200;
+    thing->period1 = 150;
     thing->periodic_counter1 = 0;
     thing->elapsed_1 = 0u;
     thing->timestamp_1 = SDL_GetTicks();
-    pthread_mutex_lock(_neighLD_discoverer_->mutex_Qdenom);
     thing->Qdenom_EMA = 1.0f;
-    pthread_mutex_unlock(_neighLD_discoverer_->mutex_Qdenom);
-    thing->N_random_colours = 40;
+    thing->N_random_colours = 20;
     thing->ms_since_Qdenom_drawn = 0;
     thing->random_colours = malloc_uint32_t_matrix(thing->N_random_colours, 3, 254);
     for (uint32_t i = 0; i < thing->N_random_colours; i++) {
@@ -84,6 +80,16 @@ void manage_events(SDL_Event* event, GuiManager* thing) {
 void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
 
     // ------------- draw the points in LD: the first two dimensions of the embedding -------------
+/***
+ *         _                                     _              _     _ _             
+ *        | |                                   | |            | |   | (_)            
+ *      __| |_ __ __ ___      __   ___ _ __ ___ | |__   ___  __| | __| |_ _ __   __ _ 
+ *     / _` | '__/ _` \ \ /\ / /  / _ \ '_ ` _ \| '_ \ / _ \/ _` |/ _` | | '_ \ / _` |
+ *    | (_| | | | (_| |\ V  V /  |  __/ | | | | | |_) |  __/ (_| | (_| | | | | | (_| |
+ *     \__,_|_|  \__,_| \_/\_/    \___|_| |_| |_|_.__/ \___|\__,_|\__,_|_|_| |_|\__, |
+ *                                                                               __/ |
+ *                                                                              |___/ 
+ */
     float** Xld = thing->neighLD_discoverer->Xld;
     uint32_t N  = thing->N;
     //find min and max values for each dimension
@@ -121,19 +127,33 @@ void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
     SDL_Rect rect2 = {x_btm_left, y_btm_left - embedding_pixel_size, embedding_pixel_size, embedding_pixel_size};    
     SDL_RenderDrawRect(renderer, &rect2);
 
+
+/***
+ *         _                                                     
+ *        | |                                                    
+ *      __| |_ __ __ ___      __   ___ _   _ _ ____   _____  ___ 
+ *     / _` | '__/ _` \ \ /\ / /  / __| | | | '__\ \ / / _ \/ __|
+ *    | (_| | | | (_| |\ V  V /  | (__| |_| | |   \ V /  __/\__ \
+ *     \__,_|_|  \__,_| \_/\_/    \___|\__,_|_|    \_/ \___||___/
+ *                                                               
+ *                                                               
+ */
     if(thing->ms_since_Qdenom_drawn > GUI_MS_UPDATE_QDENOM){
-        // ------------ draw evolution of LD denominator comapred to its EMA -------------
+        int x, y;
         thing->ms_since_Qdenom_drawn = 0;
-        // update EMA of Qdenom
-        pthread_mutex_lock(thing->neighLD_discoverer->mutex_Qdenom);
-        float qdenom = thing->neighLD_discoverer->ptr_Qdenom[0];
-        thing->Qdenom_EMA = thing->Qdenom_EMA * 0.98f + (1.0f - 0.98f) * qdenom;
-        pthread_mutex_unlock(thing->neighLD_discoverer->mutex_Qdenom);
-        // draw Qdenom according to how it evolves with its EMA
-        float x_btm_left = 0.55f * GUI_W;
-        float y_btm_left = 0.17f * GUI_H;
         float graph_W = embedding_pixel_size / 4;
         float graph_H = 0.17f * GUI_H;
+        float x_btm_left = 0.55f * GUI_W;
+        float y_btm_left = 0.17f * GUI_H;
+        /* // ------------ draw evolution of LD denominator comapred to its EMA -------------
+        // update EMA of Qdenom
+        // pthread_mutex_lock(thing->embedding_maker->mutex_Qdenom);
+        // float qdenom = thing->neighLD_discoverer->ptr_Qdenom[0];
+        // thing->Qdenom_EMA = thing->Qdenom_EMA * 0.98f + (1.0f - 0.98f) * qdenom;
+        float qdenom      = rand_float(&thing->rand_state);
+        thing->Qdenom_EMA = thing->Qdenom_EMA * 0.98f + (1.0f - 0.98f) * qdenom;
+        // pthread_mutex_unlock(thing->embedding_maker->mutex_Qdenom);
+        // draw Qdenom according to how it evolves with its EMA
         float pct_diff = (qdenom - thing->Qdenom_EMA) / (FLOAT_EPS + thing->Qdenom_EMA);
         int x = (int) (thing->periodic_counter1 * graph_W / thing->period1);
         float y_mid = y_btm_left - 0.5f * graph_H;
@@ -144,10 +164,17 @@ void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
         //draw point corresponding to the current value of Qdenom
         amber_colour(renderer);
         int y = (int) (y_mid - pct_diff * graph_H);
-        SDL_RenderDrawPoint(renderer, x_btm_left + x, y);
+        SDL_RenderDrawPoint(renderer, x_btm_left + x, y); */
+
         // ------------ draw the pct of new LD neighbours -------------
-        float pct_now = thing->neighLD_discoverer->pct_new_neighs;
-        x_btm_left = 0.55f * GUI_W + graph_W*1.05f;
+        graph_W = embedding_pixel_size / 4;
+        graph_H = 0.17f * GUI_H;
+        pthread_mutex_lock(thing->neighLD_discoverer->mutex_LDHD_balance);
+        float pct_now    = thing->neighLD_discoverer->pct_new_neighs;
+        float pct_now_HD = thing->neighHD_discoverer->pct_new_neighs;
+        pthread_mutex_unlock(thing->neighLD_discoverer->mutex_LDHD_balance);
+        
+        x = (int) (thing->periodic_counter1 * graph_W / thing->period1);
         // draw x axis as a line
         SDL_SetRenderDrawColor(renderer, 255, 205, 105, 255);
         SDL_RenderDrawLine(renderer, x_btm_left, y_btm_left, x_btm_left + graph_W, y_btm_left);
@@ -161,7 +188,6 @@ void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
         SDL_RenderDrawPoint(renderer, x_btm_left + x, y);
         //draw point corresponding to the current value of pct of new neighbours in HD
         lavender_colour(renderer);
-        float pct_now_HD = thing->neighHD_discoverer->pct_new_neighs;
         y = (int) (y_btm_left - pct_now_HD * graph_H);
         SDL_RenderDrawPoint(renderer, x_btm_left + x, y);
     }
@@ -232,6 +258,10 @@ int routine_GuiManager(void* arg) {
     thing->font = TTF_OpenFont("../assets/thefont.ttf", 24);
     if (thing->font == NULL) {
         dying_breath("TTF_OpenFont failed");}
+    
+    // initialise the screen with black
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderClear(renderer);
 
     // main loop
     const uint32_t target_frame_rate = 30; // in frames per second
@@ -264,6 +294,7 @@ void start_thread_GuiManager(GuiManager* thing) {
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         dying_breath("SDL_Init failed");
     }
+
     // create & launch the GUI thread
     thing->sdl_thread = SDL_CreateThread(routine_GuiManager, "GuiManagerThread", thing);
     if (thing->sdl_thread == NULL) {

@@ -1,25 +1,30 @@
 #include "embedding_maker.h"
 
-void new_EmbeddingMaker(EmbeddingMaker* thing, uint32_t _N_, uint32_t* thread_rand_seed, uint32_t max_nb_of_subthreads){
-    /* thing->N_reserved_subthreads = max_nb_of_subthreads;
-    thing->N_subthreads_now      = 0;
-    thing->N_subthreads_target   = max_nb_of_subthreads;
-    // initialize subthreads
-    thing->subthreads = (pthread_t*)malloc(sizeof(pthread_t) * max_nb_of_subthreads);
-    thing->subthreads_cond = (pthread_cond_t*)malloc(sizeof(pthread_cond_t) * max_nb_of_subthreads);
-    thing->subthreads_rwlock = (pthread_rwlock_t*)malloc(sizeof(pthread_rwlock_t) * max_nb_of_subthreads);
-    for(uint32_t i = 0; i < max_nb_of_subthreads; i++){
-        pthread_cond_init(&thing->subthreads_cond[i], NULL);
-        pthread_rwlock_init(&thing->subthreads_rwlock[i], NULL);
+
+void new_EmbeddingMaker_CPU(EmbeddingMaker_CPU* thing, uint32_t N, uint32_t* thread_rand_seed){
+    dying_breath("CPU-based embedding maker not implemented yet");
+}
+
+void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thread_rand_seed){
+    thing->rand_state = *thread_rand_seed;
+    printf("OK good\n");
+}
+
+void new_EmbeddingMaker(EmbeddingMaker* thing, uint32_t N, uint32_t* thread_rand_seed){
+
+    for(uint32_t i = 0; i < 1000; i++){
+        printf("d abord: faire que ls neigh_disco ont le GPU dependant de leur part de pourcentage decouvert (100 et 100 : 0.5et0.5, 100 et 0 : 1 et 0, 0 et 100 : 0 et 1)\n");
     }
-    thing->subthreads_chunck_size = 1000;
-    thing->isRunning = false;
-    thing->rand_state = (uint32_t)time(NULL) +  thread_rand_seed[0]++;
-    thing->passes_since_reset = 0;
-    thing->p_wakeup = 1.0f;
-    thing->N = _N_;
-    printf("%d rand state\n", thing->rand_state); */
-    
+
+    thing->maker_cpu = NULL;
+    thing->maker_gpu = NULL;
+    if(USE_GPU){
+        thing->maker_gpu = (EmbeddingMaker_GPU*) malloc(sizeof(EmbeddingMaker_GPU));
+        new_EmbeddingMaker_GPU(thing->maker_gpu, N, thread_rand_seed);
+    } else {
+        thing->maker_cpu = (EmbeddingMaker_CPU*) malloc(sizeof(EmbeddingMaker_CPU));
+        new_EmbeddingMaker_CPU(thing->maker_cpu, N, thread_rand_seed);
+    }
 }
 
 /*
@@ -32,28 +37,39 @@ is dividing the sum after the loops (since it's a value shaed for all points)
 sous-poudrer le tout avec des gradients de MDS
 */
 
+// thing->estimated_Qdenom = (float) (dbl_acc_denom * ( ((double) (thing->N*thing->N - thing->N)) / (double) n_votes));
+// thing->ptr_Qdenom[0] = thing->ptr_Qdenom[0]*ALPHA_QDENOM  + (1.0f - ALPHA_QDENOM) * subthread_estimation_of_denom;
+
+// printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
+// printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
+// printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
+// printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
+
 void destroy_EmbeddingMaker(EmbeddingMaker* thing){
     free(thing);
 }
 
-void* routine_EmbeddingMaker(void* arg){
-    printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
-    /* EmbeddingMaker* thing = (EmbeddingMaker*)arg;
-    thing->isRunning = true;
-    while (thing->isRunning) {
-        //check random value
-        uint32_t random_value = rand_uint32_between(&thing->rand_state, 0, 10);
-        printf("%d                                              embedding\n", random_value);
-        sleep(1);
-        if(random_value < 1) {
-            thing->isRunning = false;}
-    }
-    return NULL; */
-    printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
+void* routine_EmbeddingMaker_CPU(void* arg){
+    dying_breath("CPU-based embedding maker not implemented yet");
+    // printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
     return NULL; 
 }
 
+void* routine_EmbeddingMaker_GPU(void* arg){
+    // printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
+    return NULL; 
+}
+
+
 void start_thread_EmbeddingMaker(EmbeddingMaker* thing){
-    if(pthread_create(&thing->thread, NULL, routine_EmbeddingMaker, thing) != 0){
-        dying_breath("pthread_create routine_EmbeddingMaker failed");}
+    if(USE_GPU){
+        if(pthread_create(&thing->thread, NULL, routine_EmbeddingMaker_GPU, thing) != 0){
+            dying_breath("pthread_create routine_EmbeddingMaker failed");}
+    }
+    else {
+        dying_breath("CPU-based embedding maker not implemented yet");
+        if(pthread_create(&thing->thread, NULL, routine_EmbeddingMaker_CPU, thing) != 0){
+            dying_breath("pthread_create routine_EmbeddingMaker failed");}
+    }
+    printf("TODO : understand CUDA streams! \n");
 }

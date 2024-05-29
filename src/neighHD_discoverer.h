@@ -51,8 +51,11 @@ typedef struct {
     uint32_t subthreads_chunck_size; // the number of elements to be processed by each subthread
     pthread_t*       subthreads;
     pthread_mutex_t* subthreads_mutexes;
-    pthread_mutex_t  mutex_N_subthreads_target;
     bool* threads_waiting_for_task;
+
+    // coordinating LD/HD compute (want goos balance between the two)
+    pthread_mutex_t* mutex_LDHD_balance;
+    float*           other_space_pct;
 
     // Algorithm and subthread data: for determining LD neighbours, Q, and Qdenom
     SubthreadHD_data* subthreadHD_data;
@@ -81,7 +84,7 @@ typedef struct {
 void new_NeighHDDiscoverer(NeighHDDiscoverer* thing, uint32_t _N_, uint32_t _Mhd_, uint32_t* thread_rand_seed, uint32_t max_nb_of_subthreads,\
     pthread_mutex_t* mutexes_sizeN, float** _Xhd_, uint32_t _Khd_, uint32_t _Kld_, uint32_t** _neighsHD_, uint32_t** _neighsLD_,\
     float* furthest_neighdists_HD, float** _Psym_GT_,\
-    float* perplexity, pthread_mutex_t* mutex_perplexity);
+    float* perplexity, pthread_mutex_t* mutex_perplexity, pthread_mutex_t* mutex_LDHD_balance, float* other_space_pct);
 void  destroy_NeighHDDiscoverer(NeighHDDiscoverer* thing);
 void* routine_NeighHDDiscoverer(void* arg);
 void start_thread_NeighHDDiscoverer(NeighHDDiscoverer* thing);

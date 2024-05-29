@@ -3,9 +3,9 @@
 
 
 void new_NeighLDDiscoverer(NeighLDDiscoverer* thing, uint32_t _N_, uint32_t* thread_rand_seed, uint32_t max_nb_of_subthreads,\
-    pthread_mutex_t* _mutex_Qdenom_, pthread_mutex_t* mutexes_sizeN, float** _Xld_, float** _Xhd_, uint32_t _Mld_, uint32_t _Khd_,\
-    uint32_t _Kld_, uint32_t** _neighsLD_, uint32_t** _neighsHD_, float* furthest_neighdists_LD, float** _Q_, float* _Qdenom_,\
-    float* _ptr_kernel_LD_alpha_, pthread_mutex_t* _mutex_kernel_LD_alpha_){
+    pthread_mutex_t* mutexes_sizeN, float** _Xld_, float** _Xhd_, uint32_t _Mld_, uint32_t _Khd_,\
+    uint32_t _Kld_, uint32_t** _neighsLD_, uint32_t** _neighsHD_, float* furthest_neighdists_LD,\
+    float* _ptr_kernel_LD_alpha_, pthread_mutex_t* _mutex_kernel_LD_alpha_, pthread_mutex_t*  mutex_LDHD_balance, float* other_space_pct){
 
     // work-management data
     thing->isRunning = false;
@@ -17,7 +17,8 @@ void new_NeighLDDiscoverer(NeighLDDiscoverer* thing, uint32_t _N_, uint32_t* thr
     thing->threads_waiting_for_task = malloc_bool(max_nb_of_subthreads, true);
     thing->subthread_data           = (SubthreadData*)malloc(sizeof(SubthreadData) * max_nb_of_subthreads);
     thing->subthreads_mutexes       = mutexes_allocate_and_init(max_nb_of_subthreads);
-    pthread_mutex_init(&thing->mutex_N_subthreads_target, NULL);
+    thing->mutex_LDHD_balance       = mutex_LDHD_balance;
+    thing->other_space_pct          = other_space_pct;
 
     // initialise algorithm data on this thread
     thing->N = _N_;
@@ -29,11 +30,7 @@ void new_NeighLDDiscoverer(NeighLDDiscoverer* thing, uint32_t _N_, uint32_t* thr
     thing->neighsHD = _neighsHD_;
     thing->furthest_neighdists_LD = furthest_neighdists_LD;
     thing->pct_new_neighs = 1.0f;
-    thing->ptr_Qdenom = _Qdenom_;
-    thing->ptr_kernel_LD_alpha = _ptr_kernel_LD_alpha_;
-    thing->mutex_Qdenom  = _mutex_Qdenom_;
     thing->mutexes_sizeN = mutexes_sizeN;
-    thing->mutex_kernel_LD_alpha = _mutex_kernel_LD_alpha_;
 
     // initialize subthread internals
     for(uint32_t i = 0u; i < max_nb_of_subthreads; i++){
@@ -52,11 +49,6 @@ void new_NeighLDDiscoverer(NeighLDDiscoverer* thing, uint32_t _N_, uint32_t* thr
         subthread_data->neighsLD = _neighsLD_;
         subthread_data->neighsHD = _neighsHD_;
         subthread_data->furthest_neighdists_LD = furthest_neighdists_LD;
-        subthread_data->kernel_LD_alpha = _ptr_kernel_LD_alpha_[0];
-        // lock with mutex_Qdenom
-        pthread_mutex_lock(thing->mutex_Qdenom);
-        subthread_data->estimated_Qdenom = thing->ptr_Qdenom[0];
-        pthread_mutex_unlock(thing->mutex_Qdenom);
         subthread_data->mutexes_sizeN = mutexes_sizeN;
         subthread_data->thread_mutex = &thing->subthreads_mutexes[i];
         subthread_data->thread_waiting_for_task = &thing->threads_waiting_for_task[i];
@@ -128,10 +120,7 @@ void refine_LD_neighbours(SubthreadData* thing){
     // -----------------  for each point: -----------------
     // -----------------  find new neighbours -----------------
     // -----------------  remember that the furthest_LD dists are not up to date -----------------
-    float kernel_LD_alpha = thing->kernel_LD_alpha;
     // variables for the denominator estimation
-    double   dbl_acc_denom = 0.;
-    uint32_t n_votes       = 0u;
     uint32_t n_new_neighs  = 0u;
     // temp variables filled when mutex are acquired
     float    euclsq_ij    = 1.0f;
@@ -419,9 +408,6 @@ void refine_LD_neighbours(SubthreadData* thing){
     // save the Qdenom estimation, the number of new neighbours, and notify the main thread for a new job
     pthread_mutex_lock(thing->thread_mutex);
     thing->N_new_neighs = n_new_neighs;
-    // thing->estimated_Qdenom = (float) (dbl_acc_denom * ( ((double) (thing->N*thing->N - thing->N)) / (double) n_votes));
-    thing->estimated_Qdenom = 1.0f;
-    printf("en fait le qdenom on va le faire cote GPU aussi et ici on focus 100pourcent sur les neighbours\n");
     thing->thread_waiting_for_task[0] = true;
     pthread_mutex_unlock(thing->thread_mutex);
     return ;
@@ -440,10 +426,8 @@ void* subroutine_NeighLDDiscoverer(void* arg){
         }
         // a task has been assigned to the subthread
         else{ 
-            thing->estimated_Qdenom = 0.0f;
-            thing->N_new_neighs     = 0u;
+            thing->N_new_neighs = 0u;
             pthread_mutex_unlock(thing->thread_mutex);
-            // refine neighbours in LD, and estimate the Q denominator
             refine_LD_neighbours(thing);
         }
     }
@@ -460,25 +444,19 @@ void* routine_NeighLDDiscoverer(void* arg){
     }
     uint32_t cursor = 0u; // the cursor for the start of the next chunk
     while (thing->isRunning) {
-        // get the current value of Qdenom, for use locally
-        pthread_mutex_lock(thing->mutex_Qdenom);
-        float    now_Qdenom = thing->ptr_Qdenom[0];
-        pthread_mutex_unlock(thing->mutex_Qdenom);
         // get the current value of N_subthreads_target, for use locally
-        pthread_mutex_lock(&thing->mutex_N_subthreads_target);
-        uint32_t now_N_subthreads_target = thing->N_subthreads_target;
-        pthread_mutex_unlock(&thing->mutex_N_subthreads_target);
-        // get the current value of kernel_LD_alpha, for use locally
-        pthread_mutex_lock(thing->mutex_kernel_LD_alpha);
-        float    now_kernel_LD_alpha = thing->ptr_kernel_LD_alpha[0];
-        pthread_mutex_unlock(thing->mutex_kernel_LD_alpha);
+        pthread_mutex_lock(thing->mutex_LDHD_balance);
+        float other_pct = thing->other_space_pct[0];
+        float this_pct  = thing->pct_new_neighs;
+        float total     = FLOAT_EPS + other_pct + this_pct;
+        float ressource_allocation_ratio = this_pct / total;
+        uint32_t now_N_subthreads_target = (uint32_t)(ressource_allocation_ratio * (float)thing->N_reserved_subthreads);
+        pthread_mutex_unlock(thing->mutex_LDHD_balance);
         for(uint32_t i = 0; i < now_N_subthreads_target; i++){
             // if the subthread is waiting for a task: give a new task
             float subthread_estimation_of_denom = -1.0f; 
             pthread_mutex_lock(&thing->subthreads_mutexes[i]);
             if(thing->threads_waiting_for_task[i]){ // subthread is waiting for a task
-                // 1.1: temporarily save previous estimated denominator value
-                subthread_estimation_of_denom = thing->subthread_data[i].estimated_Qdenom;
                 // 1.2: update estimated pct of new neighs
                 if(thing->subthread_data[i].R - thing->subthread_data[i].L == thing->subthreads_chunck_size){
                     uint32_t N_new_neighs = thing->subthread_data[i].N_new_neighs;
@@ -488,10 +466,8 @@ void* routine_NeighLDDiscoverer(void* arg){
                 // 2: Assign a new task to the thread
                 thing->subthread_data[i].L = cursor;
                 thing->subthread_data[i].R = cursor + thing->subthreads_chunck_size > thing->N ? thing->N : cursor + thing->subthreads_chunck_size;
-                thing->subthread_data[i].kernel_LD_alpha = now_kernel_LD_alpha;
                 thing->threads_waiting_for_task[i] = false;
                 // 3: update the cursor in N for the next subthread
-                // printf("assingning task to subthread %d, cursor: %d\n", i, cursor);
                 cursor += thing->subthreads_chunck_size;
                 if(cursor >= thing->N){
                     cursor = 0;
@@ -505,14 +481,6 @@ void* routine_NeighLDDiscoverer(void* arg){
                 }
             }
             pthread_mutex_unlock(&thing->subthreads_mutexes[i]);
-            // if a subthread has been detected as finished, update the global Qdenom value
-            if(subthread_estimation_of_denom > 0.0f){
-                // float contribution = (1.0 - ALPHA_QDENOM) * subthread_estimation_of_denom;
-                pthread_mutex_lock(thing->mutex_Qdenom);
-                // bug previously: the alpha and complement didnt sum to 1: forgot to ad "f" to EPSILON defintion
-                thing->ptr_Qdenom[0] = thing->ptr_Qdenom[0]*ALPHA_QDENOM  + (1.0f - ALPHA_QDENOM) * subthread_estimation_of_denom;
-                pthread_mutex_unlock(thing->mutex_Qdenom);
-            }
         } 
         usleep(10000); // 1% of a second, prevent the thread from taking too much CPU time
     }

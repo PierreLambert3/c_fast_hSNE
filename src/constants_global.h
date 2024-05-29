@@ -6,6 +6,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+// determines if using the GPU or CPU for gradient computations
+#define USE_GPU true
+
 // a global epsilon for floating points equal to 1e-16
 #define FLOAT_EPS 1e-12f
 

@@ -65,6 +65,14 @@ void init_neighbours_randomly(uint32_t N, uint32_t M, float** X, uint32_t K, uin
     }
 }
 
+
+/*
+  __  __       _       
+ |  \/  | __ _(_)_ __  
+ | |\/| |/ _` | | '_ \ 
+ | |  | | (_| | | | | |
+ |_|  |_|\__,_|_|_| |_|
+*/
 int main() {
     // ~~~~~  general startup  ~~~~~
     reset_console_colour();
@@ -88,12 +96,25 @@ int main() {
     uint32_t  Kld = 10;
     float     momentum_alpha    = 0.95f; // TODO : modulated by temporal alignment
     float     nesterov_alpha    = 0.05f;
-    uint32_t  n_threads_HDneigh   = 1u + (uint32_t) ((float)machine_nb_processors * 0.2);
-    uint32_t  n_threads_LDneigh   = 1u + (uint32_t) ((float)machine_nb_processors * 0.3);
-    uint32_t  n_threads_embedding = 1u + (uint32_t) ((float)machine_nb_processors * 0.4);
-    /* uint32_t  n_threads_HDneigh   = machine_nb_processors - 2u;
-    uint32_t  n_threads_LDneigh   = 1u ;
-    uint32_t  n_threads_embedding = 1u ; */
+   /*  uint32_t  n_threads_HDneigh, n_threads_LDneigh, n_threads_embedding;
+    if(USE_GPU){
+        n_threads_HDneigh   = 1u + (uint32_t) ((float)machine_nb_processors * 0.3);
+        n_threads_LDneigh   = 1u + (uint32_t) ((float)machine_nb_processors * 0.7);
+        n_threads_embedding = 1u;
+    }
+    else{
+        n_threads_HDneigh   = 1u + (uint32_t) ((float)machine_nb_processors * 0.2);
+        n_threads_LDneigh   = 1u + (uint32_t) ((float)machine_nb_processors * 0.3);
+        n_threads_embedding = 1u + (uint32_t) ((float)machine_nb_processors * 0.4);
+    } */
+    if(!USE_GPU){
+        dying_breath("CUDA is not implemented yet. \n\
+        Once done, don't forget to modify the DYNAMIC LD/HD thread balance accordingly");
+    }
+
+    uint32_t  n_threads_HDneigh   = machine_nb_processors;
+    uint32_t  n_threads_LDneigh   = machine_nb_processors;
+    uint32_t  n_threads_embedding = USE_GPU ? 1u : machine_nb_processors;
     printf("\n\nnb of threads for each role: HDneigh=%d, LDneigh=%d, embedding=%d, SDL=%d", n_threads_HDneigh, n_threads_LDneigh, n_threads_embedding, 1);
     // 1: load & normalise the MNIST dataset
     printf("\nloading MNIST dataset...\n");
@@ -136,39 +157,33 @@ int main() {
     pthread_mutex_t mutex_Qdenom;
     if(pthread_mutex_init(&mutex_Qdenom, NULL) != 0) {
         dying_breath("pthread_mutex_init mutex_Qdenom failed");}
+    
+    // initialise the LD/HD balance mutex
+    pthread_mutex_t mutex_LDHD_balance;
+    if(pthread_mutex_init(&mutex_LDHD_balance, NULL) != 0) {
+        dying_breath("pthread_mutex_init mutex_LDHD_balance failed");}
 
     printf("initialising workers...\n");
-    // create HD neighbourhood discoverer
+    // create neighbourhood discoverers (in both spaces, LD and HD)
     NeighHDDiscoverer* neighHD_discoverer = (NeighHDDiscoverer*)malloc(sizeof(NeighHDDiscoverer));
+    NeighLDDiscoverer* neighLD_discoverer = (NeighLDDiscoverer*)malloc(sizeof(NeighLDDiscoverer));
     new_NeighHDDiscoverer(neighHD_discoverer, N, Mhd, &rand_state_main_thread, n_threads_HDneigh,\
         mutexes_sizeN, Xhd, Khd, Kld, neighsHD, neighsLD,\
         furthest_neighdists_HD, Psym,\
-        &perplexity, &mutex_perplexity);
-    // create LD neighbourhood discoverer
-    NeighLDDiscoverer* neighLD_discoverer = (NeighLDDiscoverer*)malloc(sizeof(NeighLDDiscoverer));
+        &perplexity, &mutex_perplexity, &mutex_LDHD_balance, &neighLD_discoverer->pct_new_neighs);
     new_NeighLDDiscoverer(neighLD_discoverer, N, &rand_state_main_thread, n_threads_LDneigh,\
-        &mutex_Qdenom, mutexes_sizeN, Xld, Xhd, Mld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD, Q, &Q_denom,\
-        &LD_kernel_alpha, &mutex_kernel_LD_alpha);
-
+        mutexes_sizeN, Xld, Xhd, Mld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD,\
+        &LD_kernel_alpha, &mutex_kernel_LD_alpha, &mutex_LDHD_balance, &neighHD_discoverer->pct_new_neighs);
 
     // create the embedding maker
     EmbeddingMaker* embedding_maker = (EmbeddingMaker*)malloc(sizeof(EmbeddingMaker));
-    new_EmbeddingMaker(embedding_maker, N, &rand_state_main_thread, n_threads_embedding);
+    new_EmbeddingMaker(embedding_maker, N, &rand_state_main_thread);
     // create GUI manager
     GuiManager* gui_manager = (GuiManager*)malloc(sizeof(GuiManager));
     new_GuiManager(gui_manager, N, Y, neighHD_discoverer, neighLD_discoverer, embedding_maker, &rand_state_main_thread);
     // start the GUI manager thread (which will start the HD neighbourhood discoverer thread too)
-    printf("run\n");    
     start_thread_GuiManager(gui_manager);
 
-    printf("for CUDA: dont do any I/O to GPU and just keep everything there\n");
-    printf("for CUDA: dont do any I/O to GPU and just keep everything there\n");
-    printf("for CUDA: dont do any I/O to GPU and just keep everything there\n");
-    printf("for CUDA: dont do any I/O to GPU and just keep everything there\n");
-    printf("for CUDA: dont do any I/O to GPU and just keep everything there\n");
-    printf("for CUDA: dont do any I/O to GPU and just keep everything there\n");
-    printf("for CUDA: dont do any I/O to GPU and just keep everything there\n");
-    printf("for CUDA: dont do any I/O to GPU and just keep everything there\n");
     printf("for CUDA: dont do any I/O to GPU and just keep everything there\n");
 
     // wait for the GUI thread to finish
