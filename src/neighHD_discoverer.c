@@ -3,7 +3,7 @@
 void new_NeighHDDiscoverer(NeighHDDiscoverer* thing, uint32_t _N_, uint32_t _M_, uint32_t* thread_rand_seed, uint32_t max_nb_of_subthreads,\
         pthread_mutex_t* mutexes_sizeN, float** _Xhd_, uint32_t _Khd_, uint32_t _Kld_, uint32_t** _neighsHD_, uint32_t** _neighsLD_,\
         float* furthest_neighdists_HD, float** _Psym_GT_,\
-    float* perplexity, pthread_mutex_t* mutex_perplexity, pthread_mutex_t*  mutex_LDHD_balance, float* other_space_pct){
+    float* perplexity, pthread_mutex_t* mutex_perplexity, pthread_mutex_t*  mutex_LDHD_balance, float* other_space_pct, pthread_mutex_t* mutex_P){
     // worker and subthread management
     thing->isRunning = false;
     thing->rand_state = (uint32_t)time(NULL) + ++thread_rand_seed[0];
@@ -485,7 +485,31 @@ void refine_HD_neighbours(SubthreadHD_data* thing){
             pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]); 
             if(euclsq_ij < furthest_d_i){ // if j should be a new neighbour to i
                 if(attempt_to_add_HD_neighbour(i, j, euclsq_ij, thing)){
-                    new_neigh = true;}
+                    new_neigh = true;
+
+                    for(uint32_t k = 0u; k < thing->Khd; k++){
+                        uint32_t i_candidate = thing->neighsHD[i][k];
+                        if(i_candidate != j){
+                            uint32_t i_1 = i_candidate < j ? i_candidate : j;
+                            uint32_t i_2 = i_candidate < j ? j : i_candidate;
+                            pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
+                            pthread_mutex_lock(&thing->mutexes_sizeN[i_2]);
+                            float euclsq_ij_candidate = f_euclidean_sq(thing->Xhd[i_candidate], thing->Xhd[j], thing->Mhd);
+                            float furthest_d_i_candidate = thing->furthest_neighdists_HD[i_candidate];
+                            float furthest_d_j_candidate = thing->furthest_neighdists_HD[j];
+                            pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
+                            pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]);
+                            if(euclsq_ij_candidate < furthest_d_i_candidate){
+                                if(attempt_to_add_HD_neighbour(i_candidate, j, euclsq_ij_candidate, thing)){
+                                    new_neigh = true;}
+                            }
+                            if(euclsq_ij_candidate < furthest_d_j_candidate){
+                                if(attempt_to_add_HD_neighbour(j, i_candidate, euclsq_ij_candidate, thing)){
+                                    new_neigh = true;}
+                            }
+                        }
+                    }
+                }
             }
             if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
                 if(attempt_to_add_HD_neighbour(j, i, euclsq_ij, thing)){
@@ -745,7 +769,10 @@ void* routine_NeighHDDiscoverer(void* arg) {
         float total     = FLOAT_EPS + other_pct + this_pct;
         float ressource_allocation_ratio = this_pct / total;
         uint32_t now_N_subthreads_target = (uint32_t)(ressource_allocation_ratio * (float)thing->N_reserved_subthreads);
+        if(now_N_subthreads_target == 0u){
+            now_N_subthreads_target = 1u;}
         pthread_mutex_unlock(thing->mutex_LDHD_balance);
+        // printf("HD now_N_subthreads_target: %u\n", now_N_subthreads_target);
         for(uint32_t i = 0u; i < now_N_subthreads_target; i++){
             // if the subthread is waiting for a task: give a new task
             pthread_mutex_lock(&thing->subthreads_mutexes[i]);
@@ -786,7 +813,7 @@ void* routine_NeighHDDiscoverer(void* arg) {
                         mean_dist += thing->furthest_neighdists_HD[i];
                     }
                     mean_dist /= (float)thing->N;
-                    printf("mean furthest dists for all points in N: %f  (HD)\n", mean_dist);
+                    // printf("mean furthest dists for all points in N: %f  (HD)\n", mean_dist);
                 }
             }
             else{

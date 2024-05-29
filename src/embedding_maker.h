@@ -5,13 +5,12 @@
 #include "system.h"
 #include "vector.h"
 #include "probabilities.h"
-#include <stdbool.h>
-#include <stdint.h>
 #include "constants_global.h"
-todo
+
 // one struct for CPU-based embedding maker
 typedef struct {
     bool     running;
+    pthread_mutex_t* mutex_Qdenom;
 } EmbeddingMaker_CPU;
 
 // one struct for GPU-based embedding maker
@@ -22,10 +21,20 @@ typedef struct {
     uint32_t         work_type;
     uint32_t         N;
     pthread_mutex_t* mutexes_sizeN;
-    float            Qdenom;
-    pthread_mutex_t* mutex_Qdenom;
     float*           hparam_LDkernel_alpha; // shared with gui    
     pthread_mutex_t* mutex_hparam_LDkernel_alpha;
+    float**          Xld_true;     // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data
+    float**          Xld_nesterov; // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data
+    float**          momenta_attraction;   // will be on GPU as a 1d-array, use momenta_attraction[N] to access the 1d data
+    float**          momenta_repulsion_far;  // this will leak to neighbours 
+    float**          momenta_repulsion; 
+    uint32_t**       neighsLD;
+    uint32_t**       neighsHD;
+    float*           furthest_neighdists_LD;
+    float**          Q;// will be on GPU as a 1d-array, use Q[N] to access the 1d data
+    float            Qdenom;
+    float**          P; // will be on GPU as a 1d-array, use P[N] to access the 1d data
+    pthread_mutex_t* mutex_P; // when writing to GPU
 } EmbeddingMaker_GPU;
 
 typedef struct {
@@ -36,9 +45,12 @@ typedef struct {
 
 
 
-void  new_EmbeddingMaker(EmbeddingMaker* thing, uint32_t N, uint32_t* thread_rand_seed);
-void  new_EmbeddingMaker_CPU(EmbeddingMaker_CPU* thing, uint32_t N, uint32_t* thread_rand_seed);
-void  new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thread_rand_seed);
+void  new_EmbeddingMaker(EmbeddingMaker* thing, uint32_t N, uint32_t Mld, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
+    float** Xld, uint32_t Khd, uint32_t Kld, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD);
+void  new_EmbeddingMaker_CPU(EmbeddingMaker_CPU* thing, uint32_t N, uint32_t Mld, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
+    float** Xld, uint32_t Khd, uint32_t Kld, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD);
+void  new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
+    float** Xld, uint32_t Khd, uint32_t Kld, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD);
 void  destroy_EmbeddingMaker(EmbeddingMaker* thing);
 void* routine_EmbeddingMaker_CPU(void* arg);
 void* routine_EmbeddingMaker_GPU(void* arg);

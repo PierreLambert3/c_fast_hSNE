@@ -60,14 +60,30 @@ float f_euclidean_sq(float* Xi, float* Xj, uint32_t M){
     return sum;
 }
 
+inline float fast_logf(float a) {
+    float x = a - 1;
+    float sum = 0;
+    float term = x;
+    for (int i = 1; i < 10; i++) {
+        sum += term / i;
+        term *= -x;
+    }
+    return sum;
+}
+
+inline float fast_expf(float x) {
+    float sum = 1;
+    float term = 1;
+    for (int i = 1; i < 10; i++) {
+        term *= x / i;
+        sum += term;
+    }
+    return sum;
+}
+
 inline float fast_powf(float a, float b) {
-    union {
-        float d;
-        int x[2];
-    } u = { a };
-    u.x[1] = (int)(b * (u.x[1] - 1064866805) + 1064866805);
-    u.x[0] = 0;
-    return u.d;
+    dying_breath("untested, dont use here because the distribution of a and b is not appropriate in this context (a is close to zero, b can be very big)");
+    return fast_expf(b * fast_logf(a));
 }
 
 inline float kernel_LD(float eucl_sq, float alpha){

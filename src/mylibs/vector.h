@@ -12,7 +12,9 @@ float f_euclidean_sq(float* Xi, float* Xj, uint32_t M);
 // 2d kernel for tsne
 float kernel_LD(float eucl_sq, float alpha);
 
-// fast powf 
+// for fast powf 
+float fast_logf(float a);
+float fast_expf(float x);
 float fast_powf(float a, float b);
 
 #endif // VECTOR_H

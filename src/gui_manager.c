@@ -190,6 +190,50 @@ void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
         lavender_colour(renderer);
         y = (int) (y_btm_left - pct_now_HD * graph_H);
         SDL_RenderDrawPoint(renderer, x_btm_left + x, y);
+
+        // ------------ draw the CPU usage balance between LD and HD neighbour discoverers -------------
+        // first get the balance
+        float balance = 0.0f;
+        pthread_mutex_lock(thing->neighLD_discoverer->mutex_LDHD_balance);
+        float HD_discopct = thing->neighLD_discoverer->other_space_pct[0];
+        float LD_discopct = thing->neighLD_discoverer->pct_new_neighs;
+        float total     = FLOAT_EPS + LD_discopct + HD_discopct;
+        uint32_t LD_n_threads = (uint32_t)((LD_discopct / total) * (float)thing->neighLD_discoverer->N_reserved_subthreads);
+        uint32_t HD_n_threads = (uint32_t)((HD_discopct / total) * (float)thing->neighHD_discoverer->N_reserved_subthreads);
+        if(LD_n_threads == 0u){
+            LD_n_threads = 1u;}
+        if(HD_n_threads == 0u){
+            HD_n_threads = 1u;}
+        
+        pthread_mutex_unlock(thing->neighLD_discoverer->mutex_LDHD_balance);
+        // draw a vertical bar with a cursor which's heigh is the balance (top : HD, bottom : LD)
+        float cursor_height_pct = (float)(HD_n_threads) / (float)(HD_n_threads + LD_n_threads);
+        x = GUI_W - 0.05*GUI_W;
+        y = (int) (y_btm_left - cursor_height_pct * graph_H);
+        // clear the area
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_Rect rect3 = {x-6, y_btm_left-graph_H, 12, graph_H};
+        SDL_RenderFillRect(renderer, &rect3);
+        // draw the balance
+        amber_colour(renderer);
+        // vertical line 
+        SDL_RenderDrawLine(renderer, x, y_btm_left, x, y_btm_left - graph_H);
+        // cursor: small horizontal line
+        SDL_RenderDrawLine(renderer, x-5, y, x+5, y);
+
+        // beneath the cursor, write "CPU use"
+        char balance_str[100];
+        sprintf(balance_str, "CPU use");
+        // amber colour
+        SDL_Color textColor = {167, 80, 0, 0};
+        draw_text(balance_str, renderer, thing->font, x-50, y_btm_left + 50, textColor);
+        // on the top left, write HD and same idea for LD on the bottom left
+        char HD_str[100];
+        sprintf(HD_str, "HD");
+        draw_text(HD_str, renderer, thing->font, x-50, y_btm_left - graph_H, textColor);
+        char LD_str[100];
+        sprintf(LD_str, "LD");
+        draw_text(LD_str, renderer, thing->font, x-50, y_btm_left, textColor);
     }
 
    

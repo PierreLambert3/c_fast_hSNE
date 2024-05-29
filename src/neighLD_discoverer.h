@@ -5,8 +5,6 @@
 #include "system.h"
 #include "vector.h"
 #include "probabilities.h"
-#include <stdbool.h>
-#include <stdint.h>
 #include "constants_global.h"
 
 typedef struct {

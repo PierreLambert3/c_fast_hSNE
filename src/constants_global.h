@@ -2,9 +2,7 @@
 // protect this header file
 #ifndef CONSTANTS_GLOBAL_H
 #define CONSTANTS_GLOBAL_H
-
-#include <stdbool.h>
-#include <stdint.h>
+#include "includes_global.h"
 
 // determines if using the GPU or CPU for gradient computations
 #define USE_GPU true

@@ -1,5 +1,6 @@
 #include "probabilities.h"
 
+// UNSAFE for sensitive applications: that's a shitty rand generator (but fast)
 inline uint32_t rand_uint32(uint32_t* rand_state) {
     *rand_state ^= *rand_state << 13;
     *rand_state ^= *rand_state >> 17;

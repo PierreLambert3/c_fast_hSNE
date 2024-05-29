@@ -25,16 +25,39 @@ SDL2
 also need to install the SDL2_ttf library: sudo apt-get install libsdl2-ttf-dev and makefile change
 */
 
+void gram_schmidt(float** Wproj, uint32_t Mhd, uint32_t Mld) {
+    for (uint32_t i = 0; i < Mhd; i++) {
+        for (uint32_t j = 0; j < i; j++) {
+            float dot = 0.0f;
+            for (uint32_t k = 0; k < Mld; k++) {
+                dot += Wproj[i][k] * Wproj[j][k];
+            }
+            for (uint32_t k = 0; k < Mld; k++) {
+                Wproj[i][k] -= dot * Wproj[j][k];
+            }
+        }
+        float norm = FLOAT_EPS;
+        for (uint32_t k = 0; k < Mld; k++) {
+            norm += Wproj[i][k] * Wproj[i][k];
+        }
+        norm = sqrtf(norm);
+        for (uint32_t k = 0; k < Mld; k++) {
+            Wproj[i][k] /= norm;
+        }
+    }
+}
+
 void init_Xld(float** Xhd, float** Xld, uint32_t N, uint32_t Mhd, uint32_t Mld) {
     uint32_t rand_state = (uint32_t)time(NULL);
     // initialise a random projection matrix Wproj of size Mhd x Mld, on the stack
-    float Wproj[Mhd][Mld];
+    float** Wproj = malloc_float_matrix(Mhd, Mld, 0.0f);
     for (uint32_t i = 0; i < Mhd; i++) {
         for (uint32_t j = 0; j < Mld; j++) {
-            Wproj[i][j] = rand_float_between(&rand_state, -0.2f, 1.0f);
+            Wproj[i][j] = rand_float_between(&rand_state, -1.0f, 1.0f);
         }
     }
-
+    // make it orthogonal
+    gram_schmidt(Wproj, Mhd, Mld);
     // project Xhd onto Xld
     for (uint32_t i = 0; i < N; i++) {
         for (uint32_t j = 0; j < Mld; j++) {
@@ -44,6 +67,8 @@ void init_Xld(float** Xhd, float** Xld, uint32_t N, uint32_t Mhd, uint32_t Mld) 
             }
         }
     }
+    // free proj matrix 
+    free_matrix((void**)Wproj, Mhd);
     // normalise Xld to have mean 0 and variance 1
     normalise_float_matrix(Xld, N, Mld);
 }
@@ -148,11 +173,8 @@ int main() {
     init_neighbours_randomly(N, Mhd, Xhd, Khd, neighsHD, furthest_neighdists_HD);
     printf("initialising neighbours in LD...\n");
     init_neighbours_randomly(N, Mld, Xld, Kld, neighsLD, furthest_neighdists_LD);
-    // 6: allocate Q and P matrices, the HD radii, as well as Q_denom scalar
-    float**    Q       = malloc_float_matrix(N, Kld, 1.0f);
-    float      Q_denom = 1.0f * N * N;
+    // 6:  P matrix, which is shared between embedding_maker and HD_discoverer
     float**    Psym    = malloc_float_matrix(N, Khd, 1.0f);
-    float*     radii   = malloc_float(N, 1.0f);
     // initialise the Q_denom mutex
     pthread_mutex_t mutex_Qdenom;
     if(pthread_mutex_init(&mutex_Qdenom, NULL) != 0) {
@@ -162,6 +184,10 @@ int main() {
     pthread_mutex_t mutex_LDHD_balance;
     if(pthread_mutex_init(&mutex_LDHD_balance, NULL) != 0) {
         dying_breath("pthread_mutex_init mutex_LDHD_balance failed");}
+    // initialise the mutex for changing Psym
+    pthread_mutex_t mutex_P;
+    if(pthread_mutex_init(&mutex_P, NULL) != 0) {
+        dying_breath("pthread_mutex_init mutex_P failed");}
 
     printf("initialising workers...\n");
     // create neighbourhood discoverers (in both spaces, LD and HD)
@@ -170,14 +196,16 @@ int main() {
     new_NeighHDDiscoverer(neighHD_discoverer, N, Mhd, &rand_state_main_thread, n_threads_HDneigh,\
         mutexes_sizeN, Xhd, Khd, Kld, neighsHD, neighsLD,\
         furthest_neighdists_HD, Psym,\
-        &perplexity, &mutex_perplexity, &mutex_LDHD_balance, &neighLD_discoverer->pct_new_neighs);
+        &perplexity, &mutex_perplexity, &mutex_LDHD_balance, &neighLD_discoverer->pct_new_neighs,\
+        &mutex_P);
     new_NeighLDDiscoverer(neighLD_discoverer, N, &rand_state_main_thread, n_threads_LDneigh,\
         mutexes_sizeN, Xld, Xhd, Mld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD,\
         &LD_kernel_alpha, &mutex_kernel_LD_alpha, &mutex_LDHD_balance, &neighHD_discoverer->pct_new_neighs);
 
     // create the embedding maker
     EmbeddingMaker* embedding_maker = (EmbeddingMaker*)malloc(sizeof(EmbeddingMaker));
-    new_EmbeddingMaker(embedding_maker, N, &rand_state_main_thread);
+    new_EmbeddingMaker(embedding_maker, N, Mld, &rand_state_main_thread, mutexes_sizeN,\
+        Xld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD);
     // create GUI manager
     GuiManager* gui_manager = (GuiManager*)malloc(sizeof(GuiManager));
     new_GuiManager(gui_manager, N, Y, neighHD_discoverer, neighLD_discoverer, embedding_maker, &rand_state_main_thread);

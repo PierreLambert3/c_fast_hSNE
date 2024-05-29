@@ -106,7 +106,6 @@ bool attempt_to_add_LD_neighbour(uint32_t i, uint32_t j, float euclsq_ij, Subthr
 }
 
 void refine_LD_neighbours(SubthreadData* thing){
-    printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
     // -----------------  generate random uint32_T for exploration and exploitation -----------------
     // between 0 and N
     for(uint32_t i = 0u; i < NEIGH_FAR_EXPLORATION_N_SAMPLES; i++){
@@ -148,7 +147,32 @@ void refine_LD_neighbours(SubthreadData* thing){
             pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]); 
             if(euclsq_ij < furthest_d_i){ // if j should be a new neighbour to i
                 if(attempt_to_add_LD_neighbour(i, j, euclsq_ij, thing)){
-                    new_neigh = true;}
+                    new_neigh = true;
+
+                    for(uint32_t k = 0u; k < thing->Kld; k++){
+                        uint32_t i_candidate = thing->neighsLD[i][k];
+                        if(i_candidate != j){
+                            uint32_t i_1 = i_candidate < j ? i_candidate : j;
+                            uint32_t i_2 = i_candidate < j ? j : i_candidate;
+                            pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
+                            pthread_mutex_lock(&thing->mutexes_sizeN[i_2]);
+                            float euclsq_ij_candidate = f_euclidean_sq(thing->Xld[i_candidate], thing->Xld[j], thing->Mld);
+                            float furthest_d_i_candidate = thing->furthest_neighdists_LD[i_candidate];
+                            float furthest_d_j_candidate = thing->furthest_neighdists_LD[j];
+                            pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
+                            pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]);
+                            if(euclsq_ij_candidate < furthest_d_i_candidate){
+                                if(attempt_to_add_LD_neighbour(i_candidate, j, euclsq_ij_candidate, thing)){
+                                    new_neigh = true;}
+                            }
+                            if(euclsq_ij_candidate < furthest_d_j_candidate){
+                                if(attempt_to_add_LD_neighbour(j, i_candidate, euclsq_ij_candidate, thing)){
+                                    new_neigh = true;}
+                            }
+                        }
+                    }
+
+                }
             }
             if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
                 if(attempt_to_add_LD_neighbour(j, i, euclsq_ij, thing)){
@@ -178,7 +202,32 @@ void refine_LD_neighbours(SubthreadData* thing){
             pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]); 
             if(euclsq_ij < furthest_d_i){ // if j should be a new neighbour to i
                 if(attempt_to_add_LD_neighbour(i, j, euclsq_ij, thing)){
-                    new_neigh = true;}
+                    new_neigh = true;
+                    
+                    for(uint32_t k = 0u; k < thing->Kld; k++){
+                        uint32_t i_candidate = thing->neighsLD[i][k];
+                        if(i_candidate != j){
+                            uint32_t i_1 = i_candidate < j ? i_candidate : j;
+                            uint32_t i_2 = i_candidate < j ? j : i_candidate;
+                            pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
+                            pthread_mutex_lock(&thing->mutexes_sizeN[i_2]);
+                            float euclsq_ij_candidate = f_euclidean_sq(thing->Xld[i_candidate], thing->Xld[j], thing->Mld);
+                            float furthest_d_i_candidate = thing->furthest_neighdists_LD[i_candidate];
+                            float furthest_d_j_candidate = thing->furthest_neighdists_LD[j];
+                            pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
+                            pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]);
+                            if(euclsq_ij_candidate < furthest_d_i_candidate){
+                                if(attempt_to_add_LD_neighbour(i_candidate, j, euclsq_ij_candidate, thing)){
+                                    new_neigh = true;}
+                            }
+                            if(euclsq_ij_candidate < furthest_d_j_candidate){
+                                if(attempt_to_add_LD_neighbour(j, i_candidate, euclsq_ij_candidate, thing)){
+                                    new_neigh = true;}
+                            }
+                        }
+                    }
+
+                }
             }
             if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
                 if(attempt_to_add_LD_neighbour(j, i, euclsq_ij, thing)){
@@ -215,7 +264,32 @@ void refine_LD_neighbours(SubthreadData* thing){
             pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]); 
             if(euclsq_ij < furthest_d_i){ // if j should be a new neighbour to i
                 if(attempt_to_add_LD_neighbour(i, j, euclsq_ij, thing)){
-                    new_neigh = true;}
+                    new_neigh = true;
+
+                    for(uint32_t k = 0u; k < thing->Kld; k++){
+                        uint32_t i_candidate = thing->neighsLD[i][k];
+                        if(i_candidate != j){
+                            uint32_t i_1 = i_candidate < j ? i_candidate : j;
+                            uint32_t i_2 = i_candidate < j ? j : i_candidate;
+                            pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
+                            pthread_mutex_lock(&thing->mutexes_sizeN[i_2]);
+                            float euclsq_ij_candidate = f_euclidean_sq(thing->Xld[i_candidate], thing->Xld[j], thing->Mld);
+                            float furthest_d_i_candidate = thing->furthest_neighdists_LD[i_candidate];
+                            float furthest_d_j_candidate = thing->furthest_neighdists_LD[j];
+                            pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
+                            pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]);
+                            if(euclsq_ij_candidate < furthest_d_i_candidate){
+                                if(attempt_to_add_LD_neighbour(i_candidate, j, euclsq_ij_candidate, thing)){
+                                    new_neigh = true;}
+                            }
+                            if(euclsq_ij_candidate < furthest_d_j_candidate){
+                                if(attempt_to_add_LD_neighbour(j, i_candidate, euclsq_ij_candidate, thing)){
+                                    new_neigh = true;}
+                            }
+                        }
+                    }
+
+                }
             }
             if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
                 if(attempt_to_add_LD_neighbour(j, i, euclsq_ij, thing)){
@@ -292,7 +366,33 @@ void refine_LD_neighbours(SubthreadData* thing){
             pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]); 
             if(euclsq_ij < furthest_d_i){ // if j should be a new neighbour to i
                 if(attempt_to_add_LD_neighbour(i, j, euclsq_ij, thing)){
-                    new_neigh = true;}
+                    new_neigh = true;
+
+
+                    for(uint32_t k = 0u; k < thing->Kld; k++){
+                        uint32_t i_candidate = thing->neighsLD[i][k];
+                        if(i_candidate != j){
+                            uint32_t i_1 = i_candidate < j ? i_candidate : j;
+                            uint32_t i_2 = i_candidate < j ? j : i_candidate;
+                            pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
+                            pthread_mutex_lock(&thing->mutexes_sizeN[i_2]);
+                            float euclsq_ij_candidate = f_euclidean_sq(thing->Xld[i_candidate], thing->Xld[j], thing->Mld);
+                            float furthest_d_i_candidate = thing->furthest_neighdists_LD[i_candidate];
+                            float furthest_d_j_candidate = thing->furthest_neighdists_LD[j];
+                            pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
+                            pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]);
+                            if(euclsq_ij_candidate < furthest_d_i_candidate){
+                                if(attempt_to_add_LD_neighbour(i_candidate, j, euclsq_ij_candidate, thing)){
+                                    new_neigh = true;}
+                            }
+                            if(euclsq_ij_candidate < furthest_d_j_candidate){
+                                if(attempt_to_add_LD_neighbour(j, i_candidate, euclsq_ij_candidate, thing)){
+                                    new_neigh = true;}
+                            }
+                        }
+                    }
+
+                }
             }
             if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
                 if(attempt_to_add_LD_neighbour(j, i, euclsq_ij, thing)){
@@ -342,7 +442,32 @@ void refine_LD_neighbours(SubthreadData* thing){
             pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]); 
             if(euclsq_ij < furthest_d_i){ // if j should be a new neighbour to i
                 if(attempt_to_add_LD_neighbour(i, j, euclsq_ij, thing)){
-                    new_neigh = true;}
+                    new_neigh = true;
+                    
+                    for(uint32_t k = 0u; k < thing->Kld; k++){
+                        uint32_t i_candidate = thing->neighsLD[i][k];
+                        if(i_candidate != j){
+                            uint32_t i_1 = i_candidate < j ? i_candidate : j;
+                            uint32_t i_2 = i_candidate < j ? j : i_candidate;
+                            pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
+                            pthread_mutex_lock(&thing->mutexes_sizeN[i_2]);
+                            float euclsq_ij_candidate = f_euclidean_sq(thing->Xld[i_candidate], thing->Xld[j], thing->Mld);
+                            float furthest_d_i_candidate = thing->furthest_neighdists_LD[i_candidate];
+                            float furthest_d_j_candidate = thing->furthest_neighdists_LD[j];
+                            pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
+                            pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]);
+                            if(euclsq_ij_candidate < furthest_d_i_candidate){
+                                if(attempt_to_add_LD_neighbour(i_candidate, j, euclsq_ij_candidate, thing)){
+                                    new_neigh = true;}
+                            }
+                            if(euclsq_ij_candidate < furthest_d_j_candidate){
+                                if(attempt_to_add_LD_neighbour(j, i_candidate, euclsq_ij_candidate, thing)){
+                                    new_neigh = true;}
+                            }
+                        }
+                    }
+                    
+                }
             }
             if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
                 if(attempt_to_add_LD_neighbour(j, i, euclsq_ij, thing)){
@@ -451,7 +576,10 @@ void* routine_NeighLDDiscoverer(void* arg){
         float total     = FLOAT_EPS + other_pct + this_pct;
         float ressource_allocation_ratio = this_pct / total;
         uint32_t now_N_subthreads_target = (uint32_t)(ressource_allocation_ratio * (float)thing->N_reserved_subthreads);
+        if(now_N_subthreads_target == 0u){
+            now_N_subthreads_target = 1u;}
         pthread_mutex_unlock(thing->mutex_LDHD_balance);
+        // printf("LD   now_N_subthreads_target: %u\n", now_N_subthreads_target);
         for(uint32_t i = 0; i < now_N_subthreads_target; i++){
             // if the subthread is waiting for a task: give a new task
             float subthread_estimation_of_denom = -1.0f; 
@@ -477,12 +605,13 @@ void* routine_NeighLDDiscoverer(void* arg){
                         mean_dist += thing->furthest_neighdists_LD[i];
                     }
                     mean_dist /= (float)thing->N;
-                    printf("mean furthest dists for all points in N: %f\n", mean_dist);
+                    // printf("mean furthest dists for all points in N: %f\n", mean_dist);
                 }
             }
             pthread_mutex_unlock(&thing->subthreads_mutexes[i]);
         } 
         usleep(10000); // 1% of a second, prevent the thread from taking too much CPU time
+        printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
     }
     dying_breath("routine_NeighLDDiscoverer ended");
     return NULL;
