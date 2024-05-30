@@ -186,8 +186,7 @@ int main() {
     new_NeighHDDiscoverer(neighHD_discoverer, N, Mhd, &rand_state_main_thread, n_threads_HDneigh,\
         mutexes_sizeN, Xhd, Khd, Kld, neighsHD, neighsLD,\
         furthest_neighdists_HD, Psym,\
-        &perplexity, mutex_perplexity, mutex_LDHD_balance, &neighLD_discoverer->pct_new_neighs,\
-        mutex_P);
+        &perplexity, mutex_perplexity, mutex_LDHD_balance, &neighLD_discoverer->pct_new_neighs);
     new_NeighLDDiscoverer(neighLD_discoverer, N, &rand_state_main_thread, n_threads_LDneigh,\
         mutexes_sizeN, Xld, Xhd, Mld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD,\
         &LD_kernel_alpha, mutex_kernel_LD_alpha, mutex_LDHD_balance, &neighHD_discoverer->pct_new_neighs);

@@ -16,21 +16,69 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
     thing->work_type = 0;
     thing->N = N;
     thing->mutexes_sizeN = mutexes_sizeN;
-    thing->Qdenom = 0.0f;
     thing->hparam_LDkernel_alpha       = malloc_float(1, 1.0f);
     thing->mutex_hparam_LDkernel_alpha = mutex_allocate_and_init();
-    thing->Xld_true = Xld;
-    thing->Xld_nesterov = malloc_float_matrix(N, Mld, 0.0f);
-    memcpy_float_matrix(thing->Xld_nesterov, Xld, N, Mld);
-    thing->momenta_attraction = malloc_float_matrix(N, Mld, 0.0f);
-    thing->momenta_repulsion_far = malloc_float_matrix(N, Mld, 0.0f);
-    thing->momenta_repulsion = malloc_float_matrix(N, Mld, 0.0f);
-    thing->neighsLD = neighsLD;
-    thing->neighsHD = neighsHD;
-    thing->furthest_neighdists_LD = furthest_neighdists_LD;
-    thing->Qdenom   = 1.0f;
-    thing->P = P;
+    thing->Xld_cpu = Xld;
+    thing->neighsLD_cpu = neighsLD;
+    thing->neighsHD_cpu = neighsHD;
+    thing->furthest_neighdists_LD_cpu = furthest_neighdists_LD;
+    thing->P_cpu = P;
     thing->mutex_P = mutex_P;
+    // things on GPU
+    thing->Xld_base_cuda = malloc_float(N*Mld, 0.0f);
+    memcpy(thing->Xld_base_cuda, as_float_1d(thing->Xld_cpu, N, Mld), N*Mld*sizeof(float));
+    thing->Xld_nesterov_cuda = malloc_float(N*Mld, 0.0f);
+    memcpy(thing->Xld_nesterov_cuda, as_float_1d(thing->Xld_cpu, N, Mld), N*Mld*sizeof(float));
+    thing->momenta_attraction_cuda = malloc_float(N*Mld, 0.0f);
+    thing->momenta_repulsion_far_cuda = malloc_float(N*Mld, 0.0f);
+    thing->momenta_repulsion_cuda = malloc_float(N*Mld, 0.0f);
+    thing->neighsLD_cuda = malloc_uint32_t(N*Kld, 0u);
+    memcpy(thing->neighsLD_cuda, as_uint32_1d(thing->neighsLD_cpu, N, Kld), N*Kld*sizeof(uint32_t));
+    thing->neighsHD_cuda = malloc_uint32_t(N*Khd, 0u);
+    memcpy(thing->neighsHD_cuda, as_uint32_1d(thing->neighsHD_cpu, N, Khd), N*Khd*sizeof(uint32_t));
+    thing->furthest_neighdists_LD_cuda = malloc_float(N, 0.0f);
+    memcpy(thing->furthest_neighdists_LD_cuda, furthest_neighdists_LD, N*sizeof(float));
+    thing->P_cuda = malloc_float(N*Khd, 0.0f);
+    memcpy(thing->P_cuda, as_float_1d(thing->P_cpu, N, Khd), N*Khd*sizeof(float));
+    thing->Qdenom_cuda = 1.0f;
+}
+
+
+
+/***
+ *    _________     _______  _        _______                 _______           ______   _______ 
+ *    \__   __/    (  ____ \( (    /|(  ____ \               (  ____ \|\     /|(  __  \ (  ___  )
+ *       ) (       | (    \/|  \  ( || (    \/ _             | (    \/| )   ( || (  \  )| (   ) |
+ *       | | _____ | (_____ |   \ | || (__    (_)            | |      | |   | || |   ) || (___) |
+ *       | |(_____)(_____  )| (\ \) ||  __)                  | |      | |   | || |   | ||  ___  |
+ *       | |             ) || | \   || (       _             | |      | |   | || |   ) || (   ) |
+ *       | |       /\____) || )  \  || (____/\(_)            | (____/\| (___) || (__/  )| )   ( |
+ *       )_(       \_______)|/    )_)(_______/               (_______/(_______)(______/ |/     \|
+ *                                                                                               
+ */
+
+/*
+This function performs the gradient-descent part of t-SNE, using the neighbour sets (LD and HD) and the P matrix that are continuously updated by other threads in parallel.
+This thread does its heavy-filting on the GPU using CUDA. The other threads don't use CUDA: this thread peridically writes and reads CPU-based 
+variables to ensure communication between all threads.
+
+Description of the periodic exchanges with other threads:
+- XLD_CPU is copied from GPU to CPU at each iteration, in an UNSAFE manner.
+- furthest_neighdists_LD_cuda is updated here at each iteration, and copied to furthest_neighdists_LD_cpu at each iteration.
+   The exchange is done in an UNSAFE manner, for speed.
+- neighsLD_cuda is updated here every 0.5 seconds, by copying neighsLD_cpu to neighsLD_cuda. 
+   The exchange is done in a SAFE manner using mutexes_sizeN[i]
+- neighsHD_cuda is updated here every 0.5 seconds, by copying neighsHD_cpu to neighsHD_cuda. 
+   The exchange is done in a SAFE manner using mutexes_sizeN[i]
+- P on the GPU is updated from the CPU every 0.5seconds, in a SAFE manner.
+*/
+void* routine_EmbeddingMaker_GPU(void* arg){
+    EmbeddingMaker_GPU* thing = (EmbeddingMaker_GPU*) arg;
+    while(thing->is_running){
+        
+        // printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
+    }
+    return NULL; 
 }
 
 // depending on the (user-determined) use of GPU vs CPU, this initialises the appropriate struct
@@ -78,18 +126,6 @@ void* routine_EmbeddingMaker_CPU(void* arg){
     // printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
     return NULL; 
 }
-
-void* routine_EmbeddingMaker_GPU(void* arg){
-    EmbeddingMaker_GPU* thing = (EmbeddingMaker_GPU*) arg;
-    while(thing->is_running){
-        
-        // printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
-    }
-    return NULL; 
-}
-
-abiotic factor
-
 
 void start_thread_EmbeddingMaker(EmbeddingMaker* thing){
     if(USE_GPU){

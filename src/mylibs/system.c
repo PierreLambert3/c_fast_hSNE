@@ -165,6 +165,10 @@ inline float* as_float_1d(float** matrix, uint32_t n, uint32_t m){
     return matrix[n];
 }
 
+inline uint32_t* as_uint32_1d(uint32_t** matrix, uint32_t n, uint32_t m){
+    return matrix[n];
+}
+
 inline void memcpy_float_matrix(float** recipient, float** original, uint32_t n, uint32_t m){
     memcpy(recipient[n], original[n], n*m*sizeof(float));
 }

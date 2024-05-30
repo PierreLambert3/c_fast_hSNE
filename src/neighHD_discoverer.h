@@ -73,7 +73,6 @@ typedef struct {
     float*     Pasym_sumJ_Pij;
     bool*      flag_neigh_update;
     float**    Psym;
-    pthread_mutex_t* mutex_P;
     float*     radii;
     float      pct_new_neighs;
     pthread_mutex_t* mutexes_sizeN;
@@ -83,8 +82,7 @@ typedef struct {
 void new_NeighHDDiscoverer(NeighHDDiscoverer* thing, uint32_t _N_, uint32_t _Mhd_, uint32_t* thread_rand_seed, uint32_t max_nb_of_subthreads,\
     pthread_mutex_t* mutexes_sizeN, float** _Xhd_, uint32_t _Khd_, uint32_t _Kld_, uint32_t** _neighsHD_, uint32_t** _neighsLD_,\
     float* furthest_neighdists_HD, float** _Psym_GT_,\
-    float* perplexity, pthread_mutex_t* mutex_perplexity, pthread_mutex_t* mutex_LDHD_balance, float* other_space_pct,\
-    pthread_mutex_t* mutex_P);
+    float* perplexity, pthread_mutex_t* mutex_perplexity, pthread_mutex_t* mutex_LDHD_balance, float* other_space_pct);
 void  destroy_NeighHDDiscoverer(NeighHDDiscoverer* thing);
 void* routine_NeighHDDiscoverer(void* arg);
 void start_thread_NeighHDDiscoverer(NeighHDDiscoverer* thing);

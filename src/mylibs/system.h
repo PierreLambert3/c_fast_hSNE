@@ -42,6 +42,7 @@ uint16_t** malloc_uint16_t_matrix(uint32_t n, uint32_t m, uint16_t init_val);
 uint8_t**  malloc_uint8_t_matrix(uint32_t n, uint32_t m, uint8_t init_val);
 // matrix shape handlers
 float*     as_float_1d(float** matrix, uint32_t n, uint32_t m);
+uint32_t*     as_uint32_1d(uint32_t** matrix, uint32_t n, uint32_t m);
 // matrix copy functions
 void       memcpy_float_matrix(float** recipient, float** original, uint32_t n, uint32_t m);
 // ... more to come

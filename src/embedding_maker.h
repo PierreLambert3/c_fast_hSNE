@@ -28,9 +28,9 @@ typedef struct {
     uint32_t**       neighsHD_cpu;
     float*           furthest_neighdists_LD_cpu;
     float**          P_cpu; 
-    pthread_mutex_t* mutex_P; // when writing to GPU
-
-    float*          Xld_true_cuda;     // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data
+    pthread_mutex_t* mutex_P; // for when writing CPU<->GPU
+    // things on GPU
+    float*          Xld_base_cuda;     // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data
     float*          Xld_nesterov_cuda; // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data
     float*          momenta_attraction_cuda;   // will be on GPU as a 1d-array, use momenta_attraction[N] to access the 1d data
     float*          momenta_repulsion_far_cuda;  // this will leak to neighbours 
@@ -40,11 +40,6 @@ typedef struct {
     float*          furthest_neighdists_LD_cuda;
     float*          P_cuda; 
     float           Qdenom_cuda;
-    
-
-    // GPU-memory
-    float* cuda_P;
-    float* 
 } EmbeddingMaker_GPU;
 
 typedef struct {
