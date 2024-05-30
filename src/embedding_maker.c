@@ -44,7 +44,27 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
 }
 
 
+/*
+- neighsLD_cpu -> neighsLD_cuda
+- neighsHD_cpu -> neighsHD_cuda
+- P_cpu -> P_cuda
+*/
+void safely_sync_with_CPU(EmbeddingMaker_GPU* thing){
+    prendre les mutex les uns apres les autres puis un gros memcpy puis unlock les uns apres lesautres?
+    for(uint32_t i=0; i<thing->N; i++){
+        pthread_mutex_lock(&thing->mutexes_sizeN[i]);
+        
+        continuer ici
 
+        pthread_mutex_unlock(&thing->mutexes_sizeN[i]);
+    }
+}
+
+
+solution truovées avec buffer et deux flags, cf le papier.
+solution truovées avec buffer et deux flags, cf le papier.
+solution truovées avec buffer et deux flags, cf le papier.
+solution truovées avec buffer et deux flags, cf le papier.
 /***
  *    _________     _______  _        _______                 _______           ______   _______ 
  *    \__   __/    (  ____ \( (    /|(  ____ \               (  ____ \|\     /|(  __  \ (  ___  )
@@ -67,14 +87,35 @@ Description of the periodic exchanges with other threads:
 - furthest_neighdists_LD_cuda is updated here at each iteration, and copied to furthest_neighdists_LD_cpu at each iteration.
    The exchange is done in an UNSAFE manner, for speed.
 - neighsLD_cuda is updated here every 0.5 seconds, by copying neighsLD_cpu to neighsLD_cuda. 
-   The exchange is done in a SAFE manner using mutexes_sizeN[i]
+   The exchange is done in a SAFE manner using mutexes_sizeN
 - neighsHD_cuda is updated here every 0.5 seconds, by copying neighsHD_cpu to neighsHD_cuda. 
-   The exchange is done in a SAFE manner using mutexes_sizeN[i]
+   The exchange is done in a SAFE manner using mutexes_sizeN
 - P on the GPU is updated from the CPU every 0.5seconds, in a SAFE manner.
 */
 void* routine_EmbeddingMaker_GPU(void* arg){
     EmbeddingMaker_GPU* thing = (EmbeddingMaker_GPU*) arg;
+    clock_t start_time, current_time;
+    start_time = clock();
     while(thing->is_running){
+        // gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion
+        // ...
+
+        // momentum leak: momenta_repulsion_far gets smoothed across neighbours (with conservation of vector norm)
+        // ...
+
+        // apply momenta to Xld, regenerate Xld_nesterov, decay momenta
+        // ...
+
+        // in an UNSAFE manner, update Xld_cpu and furthest_neighdists_LD_cpu
+        // ...
+
+        // every 0.5 seconds, update neighsLD_cuda and neighsHD_cuda in a SAFE manner
+        current_time = clock();
+        double time_elapsed = ((double) (current_time - start_time)) / CLOCKS_PER_SEC;
+        if(time_elapsed > GUI_CPU_SYNC_PERIOD){
+            safely_sync_with_CPU(thing);
+            start_time = clock();
+        }
         
         // printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
     }

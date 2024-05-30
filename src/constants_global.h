@@ -24,8 +24,8 @@
 #define NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES 142u // keep higher than 12u
 #define NEIGH_NEAR_EXPLOITATION_HD_N_SAMPLES 142u // same, for neighbours of neighbours and neighbours in other spaces
 
-// when adding a new neighbour, the number of other neighbours to which propagate the new neighbour
-#define HD_NEIGH_PROPAGATION_N 131u
+// how often (a double, in seconds) the GUI and CPU threads should synchronise variables
+#define GUI_CPU_SYNC_PERIOD 0.5
 
 // int value for window size of the GUI
 #define GUI_W 1050
