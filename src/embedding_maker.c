@@ -2,64 +2,53 @@
 
 
 void new_EmbeddingMaker_CPU(EmbeddingMaker_CPU* thing, uint32_t N, uint32_t Mld, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
-    float** Xld, uint32_t Khd, uint32_t Kld, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD){
+    float** Xld, uint32_t Khd, uint32_t Kld, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD,\
+    float** P, pthread_mutex_t* mutex_P){
     dying_breath("CPU-based embedding maker not implemented yet");
 }
 
 void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
-    float** Xld, uint32_t Khd, uint32_t Kld, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD){
-    thing->mutex_thread = (pthread_mutex_t*) malloc(sizeof(pthread_mutex_t));
-    if(pthread_mutex_init(thing->mutex_thread, NULL) != 0){
-        dying_breath("pthread_mutex_init mutex_thread failed");}
-    thing->rand_state = thread_rand_seed[0];
-    thing->running = false;
+        float** Xld, uint32_t Khd, uint32_t Kld, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD,\
+        float** P, pthread_mutex_t* mutex_P){
+    thing->mutex_thread = mutex_allocate_and_init();
+    thing->rand_state = ++thread_rand_seed[0];
+    thing->is_running = false;
     thing->work_type = 0;
     thing->N = N;
     thing->mutexes_sizeN = mutexes_sizeN;
     thing->Qdenom = 0.0f;
     thing->hparam_LDkernel_alpha       = malloc_float(1, 1.0f);
-    thing->mutex_hparam_LDkernel_alpha = (pthread_mutex_t*) malloc(sizeof(pthread_mutex_t));
-    if(pthread_mutex_init(thing->mutex_hparam_LDkernel_alpha, NULL) != 0){
-        dying_breath("pthread_mutex_init mutex_hparam_LDkernel_alpha failed");}
+    thing->mutex_hparam_LDkernel_alpha = mutex_allocate_and_init();
     thing->Xld_true = Xld;
     thing->Xld_nesterov = malloc_float_matrix(N, Mld, 0.0f);
-    memcpy(thing->Xld_nesterov[N], Xld[N], N*Mld*sizeof(float));
-
-    faire 2 fonctions utilitaires : 
-        un memcpy pour flaot matrix qui fait la ligne ci dessus ,
-        un contiguous_floats(float** matrice )  --> out est une float*   (c est matrix[N])
-
-    for(uint32_t n = 0; n < N; n++){
-        for(uint32_t m = 0; m < Mld; m++){
-            float abs_error = fabs(Xld[n][m] - thing->Xld_nesterov[n][m]);
-            printf("err   %f\n", abs_error);
-        }
-    }
-    die();
-    
+    memcpy_float_matrix(thing->Xld_nesterov, Xld, N, Mld);
+    thing->momenta_attraction = malloc_float_matrix(N, Mld, 0.0f);
+    thing->momenta_repulsion_far = malloc_float_matrix(N, Mld, 0.0f);
+    thing->momenta_repulsion = malloc_float_matrix(N, Mld, 0.0f);
+    thing->neighsLD = neighsLD;
+    thing->neighsHD = neighsHD;
+    thing->furthest_neighdists_LD = furthest_neighdists_LD;
+    thing->Qdenom   = 1.0f;
+    thing->P = P;
+    thing->mutex_P = mutex_P;
 }
 
 // depending on the (user-determined) use of GPU vs CPU, this initialises the appropriate struct
 void new_EmbeddingMaker(EmbeddingMaker* thing, uint32_t N, uint32_t Mld, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
-    float** Xld, uint32_t Khd, uint32_t Kld, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD){
+    float** Xld, uint32_t Khd, uint32_t Kld, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD,\
+    float** P, pthread_mutex_t* mutex_P){
     thing->maker_cpu = NULL;
     thing->maker_gpu = NULL;
     if(USE_GPU){
         thing->maker_gpu = (EmbeddingMaker_GPU*) malloc(sizeof(EmbeddingMaker_GPU));
         new_EmbeddingMaker_GPU(thing->maker_gpu, N, Mld, thread_rand_seed, mutexes_sizeN,\
-            Xld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD);
+            Xld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD, P, mutex_P);
     } else {
         thing->maker_cpu = (EmbeddingMaker_CPU*) malloc(sizeof(EmbeddingMaker_CPU));
         new_EmbeddingMaker_CPU(thing->maker_cpu, N, Mld, thread_rand_seed, mutexes_sizeN,\
-            Xld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD);
+            Xld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD, P, mutex_P);
     }
 }
-
-/*
-IMPORTANT:
-when computing the Qij part of gradients: define them such that the Qij_denom
-is dividing the sum after the loops (since it's a value shaed for all points)
-*/
 
 /*
 sous-poudrer le tout avec des gradients de MDS
@@ -91,9 +80,15 @@ void* routine_EmbeddingMaker_CPU(void* arg){
 }
 
 void* routine_EmbeddingMaker_GPU(void* arg){
-    // printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
+    EmbeddingMaker_GPU* thing = (EmbeddingMaker_GPU*) arg;
+    while(thing->is_running){
+        
+        // printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
+    }
     return NULL; 
 }
+
+abiotic factor
 
 
 void start_thread_EmbeddingMaker(EmbeddingMaker* thing){

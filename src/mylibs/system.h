@@ -25,6 +25,7 @@ void reset_console_colour();
 
 // ------------------- memory allocation -------------------
 pthread_mutex_t* mutexes_allocate_and_init(uint32_t size);
+pthread_mutex_t* mutex_allocate_and_init();
 // malloc handlers for 1d arrays
 bool*      malloc_bool(uint32_t size, bool init_val);
 float*     malloc_float(uint32_t size, float init_val);
@@ -39,6 +40,12 @@ double**   malloc_double_matrix(uint32_t n, uint32_t m, double init_val);
 uint32_t** malloc_uint32_t_matrix(uint32_t n, uint32_t m, uint32_t init_val);
 uint16_t** malloc_uint16_t_matrix(uint32_t n, uint32_t m, uint16_t init_val);
 uint8_t**  malloc_uint8_t_matrix(uint32_t n, uint32_t m, uint8_t init_val);
+// matrix shape handlers
+float*     as_float_1d(float** matrix, uint32_t n, uint32_t m);
+// matrix copy functions
+void       memcpy_float_matrix(float** recipient, float** original, uint32_t n, uint32_t m);
+// ... more to come
+
 // free handlers for mallocs
 void       free_matrix(void** matrix, uint32_t n);
 void       free_array(void* array);

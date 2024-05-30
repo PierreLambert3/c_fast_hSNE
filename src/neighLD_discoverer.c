@@ -9,7 +9,7 @@ void new_NeighLDDiscoverer(NeighLDDiscoverer* thing, uint32_t _N_, uint32_t* thr
 
     // work-management data
     thing->isRunning = false;
-    thing->rand_state = (uint32_t)time(NULL) +  ++thread_rand_seed[0];
+    thing->rand_state = ++thread_rand_seed[0];
     thing->N_reserved_subthreads  = max_nb_of_subthreads;
     thing->N_subthreads_target    = max_nb_of_subthreads;
     thing->subthreads_chunck_size = 1u + floorf(SUBTHREADS_CHUNK_SIZE_PCT * (float)_N_);

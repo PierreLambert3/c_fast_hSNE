@@ -6,7 +6,7 @@ void new_NeighHDDiscoverer(NeighHDDiscoverer* thing, uint32_t _N_, uint32_t _M_,
     float* perplexity, pthread_mutex_t* mutex_perplexity, pthread_mutex_t*  mutex_LDHD_balance, float* other_space_pct, pthread_mutex_t* mutex_P){
     // worker and subthread management
     thing->isRunning = false;
-    thing->rand_state = (uint32_t)time(NULL) + ++thread_rand_seed[0];
+    thing->rand_state = ++thread_rand_seed[0];
     thing->N_reserved_subthreads = max_nb_of_subthreads;
     thing->N_subthreads_target   = max_nb_of_subthreads;
     thing->subthreads_chunck_size = 1 + (uint32_t)floorf(SUBTHREADS_CHUNK_SIZE_PCT * (float)_N_);
@@ -70,6 +70,7 @@ void new_NeighHDDiscoverer(NeighHDDiscoverer* thing, uint32_t _N_, uint32_t _M_,
         subthread_data->task_number = 0;
         subthread_data->N = _N_;
         subthread_data->rand_state = ++thread_rand_seed[0];
+        printf("(subthread) %d rand state\n", subthread_data->rand_state);
         subthread_data->L = 0u;
         subthread_data->R = 0u;
         subthread_data->N_new_neighs = 0u;

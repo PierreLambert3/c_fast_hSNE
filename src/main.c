@@ -110,13 +110,9 @@ int main() {
     // ~~~~~  initialise the common variables for the threads  ~~~~~
     const uint32_t  Mld = 2;
     float     perplexity = 50.0f;
-    pthread_mutex_t mutex_perplexity;
-    if(pthread_mutex_init(&mutex_perplexity, NULL) != 0) {
-        dying_breath("pthread_mutex_init mutex_perplexity failed");}
+    pthread_mutex_t* mutex_perplexity = mutex_allocate_and_init();
     float     LD_kernel_alpha   = 1.0f;
-    pthread_mutex_t mutex_kernel_LD_alpha;
-    if(pthread_mutex_init(&mutex_kernel_LD_alpha, NULL) != 0) {
-        dying_breath("pthread_mutex_init mutex_kernel_LD_alpha failed");}
+    pthread_mutex_t* mutex_kernel_LD_alpha = mutex_allocate_and_init();
     uint32_t  Khd = (uint32_t)roundf(3.0f * perplexity);
     uint32_t  Kld = 10;
     float     momentum_alpha    = 0.95f; // TODO : modulated by temporal alignment
@@ -176,18 +172,12 @@ int main() {
     // 6:  P matrix, which is shared between embedding_maker and HD_discoverer
     float**    Psym    = malloc_float_matrix(N, Khd, 1.0f);
     // initialise the Q_denom mutex
-    pthread_mutex_t mutex_Qdenom;
-    if(pthread_mutex_init(&mutex_Qdenom, NULL) != 0) {
-        dying_breath("pthread_mutex_init mutex_Qdenom failed");}
+    pthread_mutex_t* mutex_Qdenom = mutex_allocate_and_init();
     
     // initialise the LD/HD balance mutex
-    pthread_mutex_t mutex_LDHD_balance;
-    if(pthread_mutex_init(&mutex_LDHD_balance, NULL) != 0) {
-        dying_breath("pthread_mutex_init mutex_LDHD_balance failed");}
+    pthread_mutex_t* mutex_LDHD_balance = mutex_allocate_and_init();
     // initialise the mutex for changing Psym
-    pthread_mutex_t mutex_P;
-    if(pthread_mutex_init(&mutex_P, NULL) != 0) {
-        dying_breath("pthread_mutex_init mutex_P failed");}
+    pthread_mutex_t* mutex_P = mutex_allocate_and_init();
 
     printf("initialising workers...\n");
     // create neighbourhood discoverers (in both spaces, LD and HD)
@@ -196,16 +186,17 @@ int main() {
     new_NeighHDDiscoverer(neighHD_discoverer, N, Mhd, &rand_state_main_thread, n_threads_HDneigh,\
         mutexes_sizeN, Xhd, Khd, Kld, neighsHD, neighsLD,\
         furthest_neighdists_HD, Psym,\
-        &perplexity, &mutex_perplexity, &mutex_LDHD_balance, &neighLD_discoverer->pct_new_neighs,\
-        &mutex_P);
+        &perplexity, mutex_perplexity, mutex_LDHD_balance, &neighLD_discoverer->pct_new_neighs,\
+        mutex_P);
     new_NeighLDDiscoverer(neighLD_discoverer, N, &rand_state_main_thread, n_threads_LDneigh,\
         mutexes_sizeN, Xld, Xhd, Mld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD,\
-        &LD_kernel_alpha, &mutex_kernel_LD_alpha, &mutex_LDHD_balance, &neighHD_discoverer->pct_new_neighs);
+        &LD_kernel_alpha, mutex_kernel_LD_alpha, mutex_LDHD_balance, &neighHD_discoverer->pct_new_neighs);
 
     // create the embedding maker
     EmbeddingMaker* embedding_maker = (EmbeddingMaker*)malloc(sizeof(EmbeddingMaker));
     new_EmbeddingMaker(embedding_maker, N, Mld, &rand_state_main_thread, mutexes_sizeN,\
-        Xld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD);
+        Xld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD,\
+        Psym, mutex_P);
     // create GUI manager
     GuiManager* gui_manager = (GuiManager*)malloc(sizeof(GuiManager));
     new_GuiManager(gui_manager, N, Y, neighHD_discoverer, neighLD_discoverer, embedding_maker, &rand_state_main_thread);
@@ -240,7 +231,7 @@ In C, you can use SIMD instructions either by using compiler intrinsics, which a
     // ~~~~~  cleanup  ~~~~~
     for (uint32_t i = 0; i < N; i++) {
         pthread_mutex_destroy(&mutexes_sizeN[i]);}
-    pthread_mutex_destroy(&mutex_Qdenom);
+    pthread_mutex_destroy(mutex_Qdenom);
 
     set_console_colour_success();
     printf("reached last instruction\n");

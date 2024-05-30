@@ -43,6 +43,15 @@ pthread_mutex_t* mutexes_allocate_and_init(uint32_t size){
     return mutexes;
 }
 
+pthread_mutex_t* mutex_allocate_and_init(){
+    pthread_mutex_t* mutex = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
+    if (mutex == NULL) {
+        die("Failed to allocate memory for mutex");}
+    if (pthread_mutex_init(mutex, NULL) != 0) {
+        die("Failed to initialise mutex");}
+    return mutex;
+}
+
 // malloc handlers for 1d arrays
 bool* malloc_bool(uint32_t size, bool init_val) {
     bool* array = (bool*)malloc(size * sizeof(bool));
@@ -113,7 +122,7 @@ uint8_t* malloc_uint8_t(uint32_t size, uint8_t init_val) {
 
 
 // matrix[0] = row 0 ... matrix[n-1] = row n-1   matrix[n] = ptr to data
-// !!! for use in cuda, give the data array as a 1d array !!!
+// !!! for use in cuda, need give the data array as a 1d array !!!
 float** malloc_float_matrix(uint32_t n, uint32_t m, float init_val) {
     float** matrix = (float**)malloc((n + 1) * sizeof(float*));
     if (matrix == NULL) {
@@ -150,6 +159,14 @@ uint32_t** malloc_uint32_t_matrix(uint32_t n, uint32_t m, uint32_t init_val){
         }
     }
     return matrix;
+}
+
+inline float* as_float_1d(float** matrix, uint32_t n, uint32_t m){
+    return matrix[n];
+}
+
+inline void memcpy_float_matrix(float** recipient, float** original, uint32_t n, uint32_t m){
+    memcpy(recipient[n], original[n], n*m*sizeof(float));
 }
 
 void free_matrix(void** matrix, uint32_t n){

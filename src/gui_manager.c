@@ -25,7 +25,7 @@ void draw_text(char* text, SDL_Renderer* renderer, TTF_Font* font, int x, int y,
 
 void new_GuiManager(GuiManager* thing, uint32_t _N_, uint32_t* _Y_, NeighHDDiscoverer* _neighHD_discoverer_,  NeighLDDiscoverer* _neighLD_discoverer_, EmbeddingMaker* _embedding_maker_, uint32_t* thread_rand_seed) {
     thing->isRunning = false;
-    thing->rand_state = (uint32_t)time(NULL) + ++thread_rand_seed[0];
+    thing->rand_state = ++thread_rand_seed[0];
     thing->N = _N_;
     thing->Y = _Y_;
     thing->period1 = 150;
@@ -50,7 +50,7 @@ void new_GuiManager(GuiManager* thing, uint32_t _N_, uint32_t* _Y_, NeighHDDisco
     thing->neighHD_discoverer = _neighHD_discoverer_;
     thing->neighLD_discoverer = _neighLD_discoverer_;
     thing->embedding_maker    = _embedding_maker_;
-    printf("%d rand state\n", thing->rand_state);
+    printf("%d rand state (GUI)\n", thing->rand_state);
 }
 
 void destroy_GuiManager(GuiManager* thing) {
@@ -299,7 +299,7 @@ int routine_GuiManager(void* arg) {
     // init SDL font (thing->font)
     if (TTF_Init() != 0) {
         dying_breath("TTF_Init failed");}
-    thing->font = TTF_OpenFont("../assets/thefont.ttf", 24);
+    thing->font = TTF_OpenFont("../assets/thefont.ttf", 15);
     if (thing->font == NULL) {
         dying_breath("TTF_OpenFont failed");}
     
