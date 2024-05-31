@@ -99,15 +99,16 @@ void NeighLDDiscoverer_perhaps_sync_with_GPU(NeighLDDiscoverer* thing){
     if(!USE_GPU){
         return;}
     // check if the GPU is requesting a sync, and that the previous sync signal has been assimilated
-    if(is_requesting_now(&thing->GPU_CPU_comms_neighsLD->sync) && !is_ready_now(&thing->GPU_CPU_comms_neighsLD->sync)){
+    GPU_CPU_sync* sync = &thing->GPU_CPU_comms_neighsLD->sync;
+    if(is_requesting_now(sync) && !is_ready_now(sync)){
         // wait for the subthreads to finish
         wait_full_path_finished(thing);
         // copy the neighsLD to the buffer, safely
         pthread_mutex_lock(thing->GPU_CPU_comms_neighsLD->sync.mutex_buffer);
-        memcpy(as_uint32_1d(thing->neighsLD, thing->N, thing->Kld), thing->GPU_CPU_comms_neighsLD->buffer, thing->N*thing->Kld*sizeof(uint32_t));
+        memcpy(thing->GPU_CPU_comms_neighsLD->buffer, as_uint32_1d(thing->neighsLD, thing->N, thing->Kld), thing->N*thing->Kld*sizeof(uint32_t));
         pthread_mutex_unlock(thing->GPU_CPU_comms_neighsLD->sync.mutex_buffer);
         // notify the GPU that the data is ready
-        notify_ready(&thing->GPU_CPU_comms_neighsLD->sync);
+        notify_ready(sync);
     }
 }
 

@@ -21,6 +21,8 @@ typedef struct {
     uint32_t         work_type;
     uint32_t         N;
     uint32_t         Mld;
+    uint32_t         Kld;
+    uint32_t         Khd;
     pthread_mutex_t* mutexes_sizeN;
     float*           hparam_LDkernel_alpha; // shared with gui    
     pthread_mutex_t* mutex_hparam_LDkernel_alpha;
@@ -30,6 +32,12 @@ typedef struct {
     float*           furthest_neighdists_LD_cpu;
     float**          P_cpu; 
     pthread_mutex_t* mutex_P; // for when writing CPU<->GPU
+
+    // safe GPU / CPU communication: neighsHD and Psym
+    GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsHD;
+    GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsLD;
+    GPU_CPU_float_buffer*  GPU_CPU_comms_P;
+
     // things on GPU
     float*          Xld_base_cuda;     // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data
     float*          Xld_nesterov_cuda; // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data
@@ -53,13 +61,15 @@ typedef struct {
 
 void  new_EmbeddingMaker(EmbeddingMaker* thing, uint32_t N, uint32_t Mld, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
     float** Xld, uint32_t Khd, uint32_t Kld, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD,\
-    float** P, pthread_mutex_t* mutex_P);
+    float** P, pthread_mutex_t* mutex_P,\
+    GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsHD, GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsLD, GPU_CPU_float_buffer* GPU_CPU_comms_P);
 void  new_EmbeddingMaker_CPU(EmbeddingMaker_CPU* thing, uint32_t N, uint32_t Mld, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
     float** Xld, uint32_t Khd, uint32_t Kld, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD,\
     float** P, pthread_mutex_t* mutex_P);
 void  new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
     float** Xld, uint32_t Khd, uint32_t Kld, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD,\
-    float** P, pthread_mutex_t* mutex_P);
+    float** P, pthread_mutex_t* mutex_P,\
+    GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsHD, GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsLD, GPU_CPU_float_buffer* GPU_CPU_comms_P);
 void  destroy_EmbeddingMaker(EmbeddingMaker* thing);
 void* routine_EmbeddingMaker_CPU(void* arg);
 void* routine_EmbeddingMaker_GPU(void* arg);

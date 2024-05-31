@@ -195,7 +195,8 @@ int main() {
     EmbeddingMaker* embedding_maker = (EmbeddingMaker*)malloc(sizeof(EmbeddingMaker));
     new_EmbeddingMaker(embedding_maker, N, Mld, &rand_state_main_thread, mutexes_sizeN,\
         Xld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD,\
-        Psym, mutex_P);
+        Psym, mutex_P,\
+        neighHD_discoverer->GPU_CPU_comms_neighsHD, neighLD_discoverer->GPU_CPU_comms_neighsLD, neighHD_discoverer->GPU_CPU_comms_Psym);
     
     // create & start the GUI, which in term will start the other threads
     GuiManager* gui_manager = (GuiManager*)malloc(sizeof(GuiManager));

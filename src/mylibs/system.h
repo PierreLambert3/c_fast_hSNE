@@ -103,22 +103,39 @@ void print_system_info();
  */
 
 /*
-Example use:
+Example uses:
 
-void perhaps_sync_with_GPU(NeighLDDiscoverer* thing){
-    if(!USE_GPU){
-        return;}
-    // check if the GPU is requesting a sync, and that the previous sync signal has been assimilated
-    if(is_requesting_now(&thing->GPU_CPU_comms_neighsLD->sync) && !is_ready_now(&thing->GPU_CPU_comms_neighsLD->sync)){
-        // wait for the subthreads to finish
-        wait_full_path_finished(thing);
-        // copy the neighsLD to the buffer, safely
-        pthread_mutex_lock(thing->GPU_CPU_comms_neighsLD->sync.mutex_buffer);
-        memcpy(as_uint32_1d(thing->neighsLD, thing->N, thing->Kld), thing->GPU_CPU_comms_neighsLD->buffer, thing->N*thing->Kld*sizeof(uint32_t));
-        pthread_mutex_unlock(thing->GPU_CPU_comms_neighsLD->sync.mutex_buffer);
-        // notify the GPU that the data is ready
-        notify_ready(&thing->GPU_CPU_comms_neighsLD->sync);
-    }
+
+CPU ------>   BUFFER
+OJO!  need to represent as 1d array
+
+GPU_CPU_sync* sync_neighsHD = &thing->GPU_CPU_comms_neighsHD->sync;
+if(is_requesting_now(sync_neighsHD) && !is_ready_now(sync_neighsHD)){
+    // wait for the subthreads to finish
+    wait_full_path_finished(thing);
+    // copy the neighsHD to the buffer, safely
+    pthread_mutex_lock(thing->GPU_CPU_comms_neighsHD->sync.mutex_buffer);
+    memcpy(thing->GPU_CPU_comms_neighsHD->buffer, as_uint32_1d(thing->neighsHD, thing->N, thing->Khd), thing->N*thing->Khd*sizeof(uint32_t));
+    pthread_mutex_unlock(thing->GPU_CPU_comms_neighsHD->sync.mutex_buffer);
+    // notify the GPU that the data is ready
+    notify_ready(sync_neighsHD);
+}
+
+
+
+BUFFER ------> GPU
+OJO!  - use cudaMemcpy() , not memcpy()  (ffs... I'm dumb)
+      - dont mix up cudaMemcpyDeviceToHost and cudaMemcpyHostToDevice
+
+GPU_CPU_sync* sync = &thing->GPU_CPU_comms_neighsLD->sync;
+if(is_ready_now(sync)){
+    pthread_mutex_lock(sync->mutex_buffer);
+    cudaMemcpy(thing->neighsLD_cuda, thing->GPU_CPU_comms_neighsLD->buffer, thing->N*thing->Kld*sizeof(uint32_t), cudaMemcpyHostToDevice);
+    pthread_mutex_unlock(sync->mutex_buffer);
+    set_ready(sync, false);
+}
+if(!is_requesting_now(sync)){
+    notify_request(sync); // request for the next sync
 }
 */
 
@@ -153,7 +170,7 @@ bool is_ready_now(GPU_CPU_sync* sync);
 void notify_ready(GPU_CPU_sync* sync);
 void notify_request(GPU_CPU_sync* sync);
 
-
-
+void set_ready(GPU_CPU_sync* sync, bool value);
+void set_request(GPU_CPU_sync* sync, bool value);
 
 #endif // SYSTEM_H

@@ -9,13 +9,16 @@ void new_EmbeddingMaker_CPU(EmbeddingMaker_CPU* thing, uint32_t N, uint32_t Mld,
 
 void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
         float** Xld, uint32_t Khd, uint32_t Kld, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD,\
-        float** P, pthread_mutex_t* mutex_P){
+        float** P, pthread_mutex_t* mutex_P,\
+    GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsHD, GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsLD, GPU_CPU_float_buffer* GPU_CPU_comms_P){
     thing->mutex_thread = mutex_allocate_and_init();
     thing->rand_state = ++thread_rand_seed[0];
     thing->is_running = false;
     thing->work_type = 0;
     thing->N = N;
     thing->Mld = Mld;
+    thing->Kld = Kld;
+    thing->Khd = Khd;
     thing->mutexes_sizeN = mutexes_sizeN;
     thing->hparam_LDkernel_alpha       = malloc_float(1, 1.0f);
     thing->mutex_hparam_LDkernel_alpha = mutex_allocate_and_init();
@@ -25,6 +28,12 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
     thing->furthest_neighdists_LD_cpu = furthest_neighdists_LD;
     thing->P_cpu = P;
     thing->mutex_P = mutex_P;
+
+    // safe GPU / CPU communication: neighsHD and Psym
+    thing->GPU_CPU_comms_neighsHD = GPU_CPU_comms_neighsHD;
+    thing->GPU_CPU_comms_neighsLD = GPU_CPU_comms_neighsLD;
+    thing->GPU_CPU_comms_P        = GPU_CPU_comms_P;
+
     // things on GPU
     thing->Xld_base_cuda = malloc_float(N*Mld, 0.0f);
     memcpy(thing->Xld_base_cuda, as_float_1d(thing->Xld_cpu, N, Mld), N*Mld*sizeof(float));
@@ -44,6 +53,25 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
     thing->Qdenom_cuda = 1.0f;
 }
 
+// depending on the (user-determined) use of GPU vs CPU, this initialises the appropriate struct
+void new_EmbeddingMaker(EmbeddingMaker* thing, uint32_t N, uint32_t Mld, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
+    float** Xld, uint32_t Khd, uint32_t Kld, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD,\
+    float** P, pthread_mutex_t* mutex_P,\
+    GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsHD, GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsLD, GPU_CPU_float_buffer* GPU_CPU_comms_P){
+    thing->maker_cpu = NULL;
+    thing->maker_gpu = NULL;
+    if(USE_GPU){
+        thing->maker_gpu = (EmbeddingMaker_GPU*) malloc(sizeof(EmbeddingMaker_GPU));
+        new_EmbeddingMaker_GPU(thing->maker_gpu, N, Mld, thread_rand_seed, mutexes_sizeN,\
+            Xld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD, P, mutex_P,\
+            GPU_CPU_comms_neighsHD, GPU_CPU_comms_neighsLD, GPU_CPU_comms_P);
+    } else {
+        thing->maker_cpu = (EmbeddingMaker_CPU*) malloc(sizeof(EmbeddingMaker_CPU));
+        new_EmbeddingMaker_CPU(thing->maker_cpu, N, Mld, thread_rand_seed, mutexes_sizeN,\
+            Xld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD, P, mutex_P);
+    }
+}
+
 /***
  *    _________     _______  _        _______                 _______           ______   _______ 
  *    \__   __/    (  ____ \( (    /|(  ____ \               (  ____ \|\     /|(  __  \ (  ___  )
@@ -57,13 +85,50 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
  */
 
 
-// this function sends the Xld and furthest_neighdists_LD to the CPU, in an UNSAFE manner
-static void send_Xld_and_furthest_neighdists_LD_to_CPU(EmbeddingMaker_GPU* thing){
+// this function sends the Xld and furthest_neighdists_LD towards the CPU, in an UNSAFE manner
+/* static void send_Xld_and_furthest_neighdists_LD_to_CPU(EmbeddingMaker_GPU* thing){
     // Xld: GPU to CPU
-    memcpy(as_float_1d(thing->Xld_cpu, thing->N, thing->Mld), thing->Xld_base_cuda, thing->N*thing->Mld*sizeof(float));
+    cudaMemcpy(as_float_1d(thing->Xld_cpu, thing->N, thing->Mld), thing->Xld_base_cuda, thing->N*thing->Mld*sizeof(float), cudaMemcpyDeviceToHost);
     // furthest_neighdists_LD: GPU to CPU
-    memcpy(thing->furthest_neighdists_LD_cpu, thing->furthest_neighdists_LD_cuda, thing->N*sizeof(float));
+    cudaMemcpy(thing->furthest_neighdists_LD_cpu, thing->furthest_neighdists_LD_cuda, thing->N*sizeof(float), cudaMemcpyDeviceToHost);
 }
+
+// this function receives the neighs and P from the CPU, in a SAFE manner
+//  Read if ready, then request sync
+static void receive_neighs_and_P_from_CPU(EmbeddingMaker_GPU* thing){
+    // 1) neighsLD: CPU to GPU.
+    GPU_CPU_sync* sync_neigh_LD = &thing->GPU_CPU_comms_neighsLD->sync;
+    if(is_ready_now(sync_neigh_LD)){
+        pthread_mutex_lock(sync_neigh_LD->mutex_buffer);
+        cudaMemcpy(thing->neighsLD_cuda, thing->GPU_CPU_comms_neighsLD->buffer, thing->N*thing->Kld*sizeof(uint32_t), cudaMemcpyHostToDevice);
+        pthread_mutex_unlock(sync_neigh_LD->mutex_buffer);
+        set_ready(sync_neigh_LD, false);
+    }
+    if(!is_requesting_now(sync_neigh_LD)){
+        notify_request(sync_neigh_LD);} // request for the next sync
+
+    // 2) neighsHD: CPU to GPU.
+    GPU_CPU_sync* sync_neigh_HD = &thing->GPU_CPU_comms_neighsHD->sync;
+    if(is_ready_now(sync_neigh_HD)){
+        pthread_mutex_lock(sync_neigh_HD->mutex_buffer);
+        cudaMemcpy(thing->neighsHD_cuda, thing->GPU_CPU_comms_neighsHD->buffer, thing->N*thing->Khd*sizeof(uint32_t), cudaMemcpyHostToDevice);
+        pthread_mutex_unlock(sync_neigh_HD->mutex_buffer);
+        set_ready(sync_neigh_HD, false);
+    }
+    if(!is_requesting_now(sync_neigh_HD)){
+        notify_request(sync_neigh_HD);}
+
+    // 3) P: CPU to GPU.
+    GPU_CPU_sync* sync_P = &thing->GPU_CPU_comms_P->sync;
+    if(is_ready_now(sync_P)){
+        pthread_mutex_lock(sync_P->mutex_buffer);
+        cudaMemcpy(thing->P_cuda, thing->GPU_CPU_comms_P->buffer, thing->N*thing->Khd*sizeof(float), cudaMemcpyHostToDevice);
+        pthread_mutex_unlock(sync_P->mutex_buffer);
+        set_ready(sync_P, false);
+    }
+    if(!is_requesting_now(sync_P)){
+        notify_request(sync_P);}
+} */
 
 
 /*
@@ -97,52 +162,22 @@ void* routine_EmbeddingMaker_GPU(void* arg){
         // apply momenta to Xld, regenerate Xld_nesterov, decay momenta
         // ...
 
-        // ~~~~~~~~~~~~~~~~~~ TESTING ~~~~~~~~~~~~~~~~~~~~~~~~
-        // randomly modify Xld cuda
-        for(uint32_t i = 0; i < thing->N*thing->Mld; i++){
-            thing->Xld_base_cuda[i] += 0.01f * (rand_r(&thing->rand_state) % 1000 - 500);
-        }
-        // randomly modify furthest_neighdists_LD_cuda
-        for(uint32_t i = 0; i < thing->N; i++){
-            thing->furthest_neighdists_LD_cuda[i] += 0.01f * (rand_r(&thing->rand_state) % 1000);
-            if(thing->furthest_neighdists_LD_cuda[i] < 0.0f){
-                thing->furthest_neighdists_LD_cuda[i] = 0.01f;
-            }
-        }
-
-        ok ca marche
-        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
         // ~~~~~~~~~~ sync with CPU workers ~~~~~~~~~~
-        // 1) "UNSAFE" syncs (only 1 writer so it's okay)
+        /* // 1) "UNSAFE" syncs (only 1 writer so it's okay)
         send_Xld_and_furthest_neighdists_LD_to_CPU(thing);
         // 2) SAFE syncs, periodically
         double time_elapsed = ((double) (clock() - start_time)) / CLOCKS_PER_SEC;
         if(time_elapsed > GUI_CPU_SYNC_PERIOD){
-            // ...
+            receive_neighs_and_P_from_CPU(thing);
             start_time = clock();
-        }
-        // printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
+        } */
+        pour le moment, ^ en commentaires car je fais des cudaMemcpy mais Cda n est pas encore initialisé donc segfault
+        printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
     }
     return NULL; 
 }
 
-// depending on the (user-determined) use of GPU vs CPU, this initialises the appropriate struct
-void new_EmbeddingMaker(EmbeddingMaker* thing, uint32_t N, uint32_t Mld, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
-    float** Xld, uint32_t Khd, uint32_t Kld, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD,\
-    float** P, pthread_mutex_t* mutex_P){
-    thing->maker_cpu = NULL;
-    thing->maker_gpu = NULL;
-    if(USE_GPU){
-        thing->maker_gpu = (EmbeddingMaker_GPU*) malloc(sizeof(EmbeddingMaker_GPU));
-        new_EmbeddingMaker_GPU(thing->maker_gpu, N, Mld, thread_rand_seed, mutexes_sizeN,\
-            Xld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD, P, mutex_P);
-    } else {
-        thing->maker_cpu = (EmbeddingMaker_CPU*) malloc(sizeof(EmbeddingMaker_CPU));
-        new_EmbeddingMaker_CPU(thing->maker_cpu, N, Mld, thread_rand_seed, mutexes_sizeN,\
-            Xld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD, P, mutex_P);
-    }
-}
+
 
 /*
 sous-poudrer le tout avec des gradients de MDS

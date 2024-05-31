@@ -148,7 +148,7 @@ void NeighHDDiscoverer_perhaps_sync_with_GPU(NeighHDDiscoverer* thing){
         wait_full_path_finished(thing);
         // copy the neighsHD to the buffer, safely
         pthread_mutex_lock(thing->GPU_CPU_comms_neighsHD->sync.mutex_buffer);
-        memcpy(as_uint32_1d(thing->neighsHD, thing->N, thing->Khd), thing->GPU_CPU_comms_neighsHD->buffer, thing->N*thing->Khd*sizeof(uint32_t));
+        memcpy(thing->GPU_CPU_comms_neighsHD->buffer, as_uint32_1d(thing->neighsHD, thing->N, thing->Khd), thing->N*thing->Khd*sizeof(uint32_t));
         pthread_mutex_unlock(thing->GPU_CPU_comms_neighsHD->sync.mutex_buffer);
         // notify the GPU that the data is ready
         notify_ready(sync_neighsHD);
@@ -160,7 +160,7 @@ void NeighHDDiscoverer_perhaps_sync_with_GPU(NeighHDDiscoverer* thing){
         wait_full_path_finished(thing);
         // copy the Psym to the buffer, safely
         pthread_mutex_lock(thing->GPU_CPU_comms_Psym->sync.mutex_buffer);
-        memcpy(as_float_1d(thing->Psym, thing->N, thing->Khd), thing->GPU_CPU_comms_Psym->buffer, thing->N*thing->Khd*sizeof(float));
+        memcpy(thing->GPU_CPU_comms_Psym->buffer, as_float_1d(thing->Psym, thing->N, thing->Khd), thing->N*thing->Khd*sizeof(float));
         pthread_mutex_unlock(thing->GPU_CPU_comms_Psym->sync.mutex_buffer);
         // notify the GPU that the data is ready
         notify_ready(sync_Psym);

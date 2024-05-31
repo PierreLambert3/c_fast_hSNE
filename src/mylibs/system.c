@@ -466,23 +466,24 @@ bool is_ready_now(GPU_CPU_sync* sync){
 }
 
 void notify_ready(GPU_CPU_sync* sync){
-    // set request to false
-    pthread_mutex_lock(sync->mutex_request);
-    sync->flag_request = false;
-    pthread_mutex_unlock(sync->mutex_request);
-    // notify that the buffer is ready
-    pthread_mutex_lock(sync->mutex_ready);
-    sync->flag_ready = true;
-    pthread_mutex_unlock(sync->mutex_ready);
+    set_request(sync, false);
+    set_ready(sync, true);
 }
 
 void notify_request(GPU_CPU_sync* sync){
-    // set ready to false
+    set_ready(sync, false);
+    set_request(sync, true);
+}
+
+void set_ready(GPU_CPU_sync* sync, bool value){
     pthread_mutex_lock(sync->mutex_ready);
-    sync->flag_ready = false;
+    sync->flag_ready = value;
     pthread_mutex_unlock(sync->mutex_ready);
-    // notify that the buffer is requested
+}
+
+void set_request(GPU_CPU_sync* sync, bool value){
     pthread_mutex_lock(sync->mutex_request);
-    sync->flag_request = true;
+    sync->flag_request = value;
     pthread_mutex_unlock(sync->mutex_request);
 }
+
