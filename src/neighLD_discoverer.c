@@ -184,6 +184,7 @@ void refine_LD_neighbours(SubthreadData* thing){
             furthest_d_j = thing->furthest_neighdists_LD[j];
             pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
             pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]); 
+
             if(euclsq_ij < furthest_d_i){ // if j should be a new neighbour to i
                 if(attempt_to_add_LD_neighbour(i, j, euclsq_ij, thing)){
                     new_neigh = true;
@@ -629,6 +630,7 @@ void* routine_NeighLDDiscoverer(void* arg){
                     uint32_t N_new_neighs = thing->subthread_data[i].N_new_neighs;
                     float pctage = N_new_neighs > thing->subthreads_chunck_size ? 1.0f : (float)N_new_neighs / (float)thing->subthreads_chunck_size;
                     thing->pct_new_neighs = thing->pct_new_neighs * 0.98f + 0.02f * pctage;
+                    // printf(" Xld of the first point:  %f   %f    furthest neigh dist: %f\n", thing->subthread_data[i].Xld[0][0], thing->subthread_data[i].Xld[0][1], thing->furthest_neighdists_LD[0]);
                 }   
                 // 2: Assign a new task to the thread
                 thing->subthread_data[i].L = cursor;

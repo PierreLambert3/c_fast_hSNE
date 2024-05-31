@@ -196,19 +196,11 @@ int main() {
     new_EmbeddingMaker(embedding_maker, N, Mld, &rand_state_main_thread, mutexes_sizeN,\
         Xld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD,\
         Psym, mutex_P);
-
-    if(embedding_maker->maker_gpu->Xld_cpu == NULL){
-        dying_breath("cpu_array is NULL   (main 1)");}
     
-    // create GUI manager
+    // create & start the GUI, which in term will start the other threads
     GuiManager* gui_manager = (GuiManager*)malloc(sizeof(GuiManager));
     new_GuiManager(gui_manager, N, Y, neighHD_discoverer, neighLD_discoverer, embedding_maker, &rand_state_main_thread);
-    // start the GUI manager thread (which will start the HD neighbourhood discoverer thread too)
-    if(embedding_maker->maker_gpu->Xld_cpu == NULL){
-        dying_breath("cpu_array is NULL   (main 2)");}
     start_thread_GuiManager(gui_manager);
-
-    printf("for CUDA: dont do any I/O to GPU and just keep everything there\n");
 
     // wait for the GUI thread to finish
     pthread_join(neighHD_discoverer->thread, NULL);
@@ -216,14 +208,10 @@ int main() {
     pthread_join(embedding_maker->thread, NULL);
     int threadReturnValue;
     SDL_WaitThread(gui_manager->sdl_thread, &threadReturnValue);
-    /* // Wait for pthreads to finish
-    pthread_join(thing->neighHD_discoverer->thread, NULL);
-    pthread_join(thing->neighLD_discoverer->thread, NULL);
-    pthread_join(thing->embedding_maker->thread, NULL); */
-
+    
     /*
     TODO:
-    check SIMD instructions to :
+    learn about SIMD instructions :
     SIMD stands for Single Instruction, Multiple Data. It's a class of parallel computers in Flynn's taxonomy. SIMD describes computers with multiple processing elements that perform the same operation on multiple data points simultaneously.
 
 In the context of CPU architectures, SIMD instructions allow a single operation to be performed on multiple data points at once. For example, if you have an array of integers and you want to add a specific value to each integer, a SIMD instruction could perform these additions in parallel, rather than sequentially.
