@@ -196,10 +196,16 @@ int main() {
     new_EmbeddingMaker(embedding_maker, N, Mld, &rand_state_main_thread, mutexes_sizeN,\
         Xld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD,\
         Psym, mutex_P);
+
+    if(embedding_maker->maker_gpu->Xld_cpu == NULL){
+        dying_breath("cpu_array is NULL   (main 1)");}
+    
     // create GUI manager
     GuiManager* gui_manager = (GuiManager*)malloc(sizeof(GuiManager));
     new_GuiManager(gui_manager, N, Y, neighHD_discoverer, neighLD_discoverer, embedding_maker, &rand_state_main_thread);
     // start the GUI manager thread (which will start the HD neighbourhood discoverer thread too)
+    if(embedding_maker->maker_gpu->Xld_cpu == NULL){
+        dying_breath("cpu_array is NULL   (main 2)");}
     start_thread_GuiManager(gui_manager);
 
     printf("for CUDA: dont do any I/O to GPU and just keep everything there\n");

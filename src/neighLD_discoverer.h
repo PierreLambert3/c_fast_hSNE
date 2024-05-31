@@ -21,7 +21,6 @@ typedef struct {
     uint32_t** neighsLD;
     uint32_t** neighsHD;
     float*     furthest_neighdists_LD;
-    // float kernel_LD_alpha;
     bool* thread_waiting_for_task;
     pthread_mutex_t* mutexes_sizeN;
     pthread_mutex_t* thread_mutex;
@@ -42,10 +41,12 @@ typedef struct {
     pthread_mutex_t* subthreads_mutexes;
     bool* threads_waiting_for_task;
 
-    // coordinating LD/HD compute (want goos balance between the two)
+    // coordinating LD/HD compute (want good balance between the two)
     float*           other_space_pct;
     pthread_mutex_t* mutex_LDHD_balance;
     
+    // safe GPU / CPU communication: neighsLD
+    GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsLD;
     
     // Algorithm and subthread data: for determining LD neighbours
     SubthreadData* subthread_data;
@@ -72,6 +73,8 @@ void* routine_NeighLDDiscoverer(void* arg);
 void  start_thread_NeighLDDiscoverer(NeighLDDiscoverer* thing);
 
 void* subroutine_NeighLDDiscoverer(void* arg);
+
+void NeighLDDiscoverer_perhaps_sync_with_GPU(NeighLDDiscoverer* thing);
 
 // refines the estimated set of LD neighbours for points between L and R
 // return the estimation of the total sum of q_ij based on the q_ij that were computed during the neigbhour refinenement process

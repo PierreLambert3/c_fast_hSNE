@@ -55,6 +55,10 @@ typedef struct {
     pthread_mutex_t* mutex_LDHD_balance;
     float*           other_space_pct;
 
+    // safe GPU / CPU communication: neighsHD and Psym
+    GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsHD;
+    GPU_CPU_float_buffer*  GPU_CPU_comms_Psym;
+
     // Algorithm and subthread data: for determining LD neighbours, Q, and Qdenom
     SubthreadHD_data* subthreadHD_data;
     uint32_t   N;
@@ -81,14 +85,15 @@ typedef struct {
 
 void new_NeighHDDiscoverer(NeighHDDiscoverer* thing, uint32_t _N_, uint32_t _Mhd_, uint32_t* thread_rand_seed, uint32_t max_nb_of_subthreads,\
     pthread_mutex_t* mutexes_sizeN, float** _Xhd_, uint32_t _Khd_, uint32_t _Kld_, uint32_t** _neighsHD_, uint32_t** _neighsLD_,\
-    float* furthest_neighdists_HD, float** _Psym_GT_,\
+    float* furthest_neighdists_HD, float** _Psym_,\
     float* perplexity, pthread_mutex_t* mutex_perplexity, pthread_mutex_t* mutex_LDHD_balance, float* other_space_pct);
 void  destroy_NeighHDDiscoverer(NeighHDDiscoverer* thing);
 void* routine_NeighHDDiscoverer(void* arg);
 void start_thread_NeighHDDiscoverer(NeighHDDiscoverer* thing);
-void wait_full_path_finished(NeighHDDiscoverer* thing);
+void NeighHDDiscoverer_perhaps_sync_with_GPU(NeighHDDiscoverer* thing);
 
 bool attempt_to_add_HD_neighbour(uint32_t i, uint32_t j, float euclsq_ij, SubthreadHD_data* thing);
+
 
 void* subroutine_NeighLDDiscoverer(void* arg);
 void refine_HD_neighbours(SubthreadHD_data* thing);

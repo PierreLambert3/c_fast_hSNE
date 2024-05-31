@@ -20,6 +20,7 @@ typedef struct {
     bool             is_running;
     uint32_t         work_type;
     uint32_t         N;
+    uint32_t         Mld;
     pthread_mutex_t* mutexes_sizeN;
     float*           hparam_LDkernel_alpha; // shared with gui    
     pthread_mutex_t* mutex_hparam_LDkernel_alpha;

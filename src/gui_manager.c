@@ -330,10 +330,24 @@ int routine_GuiManager(void* arg) {
 }
 
 void start_thread_GuiManager(GuiManager* thing) {
+    if(thing->embedding_maker->maker_gpu->Xld_cpu == NULL){
+        dying_breath("cpu_array is NULL   start_thread_GuiManager  1");}
+
     // launch worker threads
     start_thread_NeighHDDiscoverer(thing->neighHD_discoverer);
     start_thread_NeighLDDiscoverer(thing->neighLD_discoverer);
     start_thread_EmbeddingMaker(thing->embedding_maker);
+
+    if(thing->embedding_maker->maker_gpu->Xld_cpu == NULL){
+        dying_breath("cpu_array is NULL   start_thread_GuiManager  2");}
+
+    /* for(uint32_t i=0; i<thing->embedding_maker->maker_gpu->N; i++){
+        for(uint32_t j=0; j<thing->embedding_maker->maker_gpu->Mld; j++){
+            printf("thing->Xld_cpu[i][j] = %f\n", thing->embedding_maker->maker_gpu->Xld_cpu[i][j]);
+        }
+    }
+    die(); */
+
     // initialise SDL
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         dying_breath("SDL_Init failed");

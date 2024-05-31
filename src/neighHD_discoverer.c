@@ -2,7 +2,7 @@
 
 void new_NeighHDDiscoverer(NeighHDDiscoverer* thing, uint32_t _N_, uint32_t _M_, uint32_t* thread_rand_seed, uint32_t max_nb_of_subthreads,\
         pthread_mutex_t* mutexes_sizeN, float** _Xhd_, uint32_t _Khd_, uint32_t _Kld_, uint32_t** _neighsHD_, uint32_t** _neighsLD_,\
-        float* furthest_neighdists_HD, float** _Psym_GT_,\
+        float* furthest_neighdists_HD, float** _Psym_,\
     float* perplexity, pthread_mutex_t* mutex_perplexity, pthread_mutex_t*  mutex_LDHD_balance, float* other_space_pct){
     // worker and subthread management
     thing->isRunning = false;
@@ -14,8 +14,14 @@ void new_NeighHDDiscoverer(NeighHDDiscoverer* thing, uint32_t _N_, uint32_t _M_,
     thing->subthreads = (pthread_t*)malloc(sizeof(pthread_t) * max_nb_of_subthreads);
     thing->subthreads_mutexes = mutexes_allocate_and_init(max_nb_of_subthreads);
     thing->threads_waiting_for_task = malloc_bool(max_nb_of_subthreads, true);
+
+    // coordinating LD/HD compute (want goos balance between the two)
     thing->mutex_LDHD_balance       = mutex_LDHD_balance;
     thing->other_space_pct          = other_space_pct;
+
+    // safe GPU / CPU communication: neighsHD and Psym
+    thing->GPU_CPU_comms_neighsHD = malloc_GPU_CPU_uint32_buffer(_N_* _Khd_);
+    thing->GPU_CPU_comms_Psym     = malloc_GPU_CPU_float_buffer(_N_ * _Khd_);
 
     // initialise algorithm data on this thread
     thing->N = _N_;
@@ -29,7 +35,7 @@ void new_NeighHDDiscoverer(NeighHDDiscoverer* thing, uint32_t _N_, uint32_t _M_,
     thing->Pasym = malloc_float_matrix(_N_, _Khd_, 1.0f);
     thing->dists_neighHD = malloc_float_matrix(_N_, _Khd_, 1.0f);
     thing->Pasym_sumJ_Pij = malloc_float(_N_, 1.0f);
-    thing->Psym = _Psym_GT_;
+    thing->Psym = _Psym_;
     thing->radii = malloc_float(_N_, 1.0f);
     thing->target_perplexity = perplexity;
     thing->mutex_target_perplexity = mutex_perplexity;
@@ -111,6 +117,54 @@ void destroy_NeighHDDiscoverer(NeighHDDiscoverer* thing) {
     free_matrix((void**)thing->Pasym, thing->N);
     free(thing->subthreadHD_data);
     free(thing);
+}
+
+static void wait_full_path_finished(NeighHDDiscoverer* thing){
+    // check each subthread and sleep 1pct of a second untill all are waiting for a task
+    bool all_idle = false;
+    while(!all_idle){
+        all_idle = true;
+        for(uint32_t i = 0u; i < thing->N_reserved_subthreads; i++){
+            pthread_mutex_lock(&thing->subthreads_mutexes[i]);
+            if(!thing->threads_waiting_for_task[i]){
+                all_idle = false;
+            }
+            pthread_mutex_unlock(&thing->subthreads_mutexes[i]);
+        }
+        if(all_idle){
+            sleep_ms(10); // 10 ms (1% of a second)
+        }
+    }
+}
+
+// sync targets: neighsHD and Psym
+void NeighHDDiscoverer_perhaps_sync_with_GPU(NeighHDDiscoverer* thing){
+    if(!USE_GPU){
+        return;}
+    // for neigh_HD
+    GPU_CPU_sync* sync_neighsHD = &thing->GPU_CPU_comms_neighsHD->sync;
+    if(is_requesting_now(sync_neighsHD) && !is_ready_now(sync_neighsHD)){
+        // wait for the subthreads to finish
+        wait_full_path_finished(thing);
+        // copy the neighsHD to the buffer, safely
+        pthread_mutex_lock(thing->GPU_CPU_comms_neighsHD->sync.mutex_buffer);
+        memcpy(as_uint32_1d(thing->neighsHD, thing->N, thing->Khd), thing->GPU_CPU_comms_neighsHD->buffer, thing->N*thing->Khd*sizeof(uint32_t));
+        pthread_mutex_unlock(thing->GPU_CPU_comms_neighsHD->sync.mutex_buffer);
+        // notify the GPU that the data is ready
+        notify_ready(sync_neighsHD);
+    }
+    // for Psym
+    GPU_CPU_sync* sync_Psym = &thing->GPU_CPU_comms_Psym->sync;
+    if(is_requesting_now(sync_Psym) && !is_ready_now(sync_Psym)){
+        // wait for the subthreads to finish
+        wait_full_path_finished(thing);
+        // copy the Psym to the buffer, safely
+        pthread_mutex_lock(thing->GPU_CPU_comms_Psym->sync.mutex_buffer);
+        memcpy(as_float_1d(thing->Psym, thing->N, thing->Khd), thing->GPU_CPU_comms_Psym->buffer, thing->N*thing->Khd*sizeof(float));
+        pthread_mutex_unlock(thing->GPU_CPU_comms_Psym->sync.mutex_buffer);
+        // notify the GPU that the data is ready
+        notify_ready(sync_Psym);
+    }
 }
 
 bool attempt_to_add_HD_neighbour(uint32_t i, uint32_t j, float euclsq_ij, SubthreadHD_data* thing){
@@ -554,7 +608,7 @@ void refine_HD_neighbours(SubthreadHD_data* thing){
 
 void update_radii(SubthreadHD_data* thing){
     float target_perplexity = thing->target_perplexity[0];
-    float PP_tol = 0.02f * target_perplexity;
+    float PP_tol = 0.01f * target_perplexity;
     float R_entropy = logf(target_perplexity + PP_tol);
     float L_entropy = logf(target_perplexity - PP_tol);
     float desired_entropy = (R_entropy + L_entropy) / 2.0f;
@@ -571,13 +625,12 @@ void update_radii(SubthreadHD_data* thing){
         float beta_max = 99999999999.0f;
         float beta     = 0.0001f;
 
-        // initilise max_beta and min_beta by growing beta
+        // initialise max_beta and min_beta by growing beta
         bool growing_beta = true;
         uint32_t iter2 = 0u;
         uint32_t iter1 = 0u;
         while(growing_beta){
             iter1++;
-            // compute entropy 
             float sumPi = 0.0f;
             for(uint32_t k = 0u; k < thing->Khd; k++){
                 uint32_t j = thing->neighsHD[i][k];
@@ -637,10 +690,10 @@ void update_radii(SubthreadHD_data* thing){
         pthread_mutex_lock(&thing->mutexes_sizeN[i]);
         thing->radii[i] = new_radius;
         pthread_mutex_unlock(&thing->mutexes_sizeN[i]);
-        /* //verify perplexity 
-        float H = obs_H(thing, i, thing->radii[i]);
-        float PP = expf(H);
-        printf("PP: %f  target: %f\n", PP, target_perplexity); */
+        //verify perplexity 
+        // float H  = obs_H(thing, i, thing->radii[i]);
+        // float PP = expf(H);
+        // printf("PP: %f  target: %f\n", PP, target_perplexity);
     }
 
     pthread_mutex_lock(thing->thread_mutex);
@@ -650,12 +703,21 @@ void update_radii(SubthreadHD_data* thing){
 
 
 inline float obs_H(SubthreadHD_data* thing, uint32_t i, float radius){
+    float temp_pijs[thing->Khd];
+    float beta = 1.0f / (FLOAT_EPS + radius);
+    float sumPi = 0.0f;
+    for(uint32_t k = 0u; k < thing->Khd; k++){
+        uint32_t j = thing->neighsHD[i][k];
+        float eucl = thing->dists_neighHD[i][k];
+        temp_pijs[k] = expf(-eucl*beta);
+        sumPi += temp_pijs[k];
+    }
+    sumPi = sumPi > 0.0f ? sumPi : FLOAT_EPS;
     float sum_P_x_dist = 0.0f;
     for(uint32_t k = 0u; k < thing->Khd; k++){
-        sum_P_x_dist += (thing->Pasym[i][k] / thing->Pasym_sumJ_Pij[i]) * thing->dists_neighHD[i][k];
+        sum_P_x_dist += (temp_pijs[k] / sumPi) * thing->dists_neighHD[i][k];
     }
-    float H = logf(thing->Pasym_sumJ_Pij[i]) + sum_P_x_dist/radius;
-    return H < 0.0f ? 0.0f : H;
+    return logf(sumPi) + beta*sum_P_x_dist;
 }
 
 
@@ -731,23 +793,7 @@ void* subroutine_NeighHDDiscoverer(void* arg){
     return NULL;
 }
 
-void wait_full_path_finished(NeighHDDiscoverer* thing){
-    // check each subthread and sleep 1pct of a second untill all are waiting for a task
-    bool all_waiting = false;
-    while(!all_waiting){
-        all_waiting = true;
-        for(uint32_t i = 0u; i < thing->N_reserved_subthreads; i++){
-            pthread_mutex_lock(&thing->subthreads_mutexes[i]);
-            if(!thing->threads_waiting_for_task[i]){
-                all_waiting = false;
-            }
-            pthread_mutex_unlock(&thing->subthreads_mutexes[i]);
-        }
-        if(all_waiting){
-            usleep(10000); // 1% of a second
-        }
-    }
-}
+
 
 void* routine_NeighHDDiscoverer(void* arg) {
     NeighHDDiscoverer* thing = (NeighHDDiscoverer*)arg;
@@ -800,21 +846,12 @@ void* routine_NeighHDDiscoverer(void* arg) {
                     task_counter++;
                     if(task_counter >= N_neigh_finding + 3u){
                         task_counter = 0u;
+                        NeighHDDiscoverer_perhaps_sync_with_GPU(thing); // just finished computing Psym: might want to sync with GPU
                     }
 
-                    // if: will start working on radius or on Psym
                     task_number = (task_counter < N_neigh_finding) ? 0u : 1u + (task_counter - N_neigh_finding);
-                    if(task_number > 0u){
-                        wait_full_path_finished(thing);
-                    }
-                    
-                    // print the mean furthest dists for all points in N
-                    float mean_dist = 0.0f;
-                    for(uint32_t i = 0u; i < thing->N; i++){
-                        mean_dist += thing->furthest_neighdists_HD[i];
-                    }
-                    mean_dist /= (float)thing->N;
-                    // printf("mean furthest dists for all points in N: %f  (HD)\n", mean_dist);
+                    if(task_number > 0u){ // if: will start working on radius or on Psym
+                        wait_full_path_finished(thing);}
                 }
             }
             else{

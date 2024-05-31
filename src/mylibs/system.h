@@ -15,7 +15,18 @@
 void dying_breath(const char* message);
 void die();
 
-// ------------------- output management -------------------
+void sleep_ms(uint32_t n_ms);
+
+/***
+ *                 _               _                                                                 _   
+ *                | |             | |                                                               | |  
+ *      ___  _   _| |_ _ __  _   _| |_   _ __ ___   __ _ _ __   __ _  __ _  ___ _ __ ___   ___ _ __ | |_ 
+ *     / _ \| | | | __| '_ \| | | | __| | '_ ` _ \ / _` | '_ \ / _` |/ _` |/ _ \ '_ ` _ \ / _ \ '_ \| __|
+ *    | (_) | |_| | |_| |_) | |_| | |_  | | | | | | (_| | | | | (_| | (_| |  __/ | | | | |  __/ | | | |_ 
+ *     \___/ \__,_|\__| .__/ \__,_|\__| |_| |_| |_|\__,_|_| |_|\__,_|\__, |\___|_| |_| |_|\___|_| |_|\__|
+ *                    | |                                             __/ |                              
+ *                    |_|                                            |___/                               
+ */
 // sets the console colour to the specified RGB values
 void set_console_colour(uint8_t r, uint8_t g, uint8_t b);
 void set_console_colour_error();
@@ -23,7 +34,16 @@ void set_console_colour_success();
 void reset_console_colour();
 
 
-// ------------------- memory allocation -------------------
+/***
+ *                                               
+ *                                               
+ *     _ __ ___   ___ _ __ ___   ___  _ __ _   _ 
+ *    | '_ ` _ \ / _ \ '_ ` _ \ / _ \| '__| | | |
+ *    | | | | | |  __/ | | | | | (_) | |  | |_| |
+ *    |_| |_| |_|\___|_| |_| |_|\___/|_|   \__, |
+ *                                          __/ |
+ *                                         |___/ 
+ */
 pthread_mutex_t* mutexes_allocate_and_init(uint32_t size);
 pthread_mutex_t* mutex_allocate_and_init();
 // malloc handlers for 1d arrays
@@ -53,12 +73,87 @@ void       free_array(void* array);
 
 
 
-// ------------------- info on the system -------------------
+/***
+ *                   _                   _        __      
+ *                  | |                 (_)      / _|     
+ *     ___ _   _ ___| |_ ___ _ __ ___    _ _ __ | |_ ___  
+ *    / __| | | / __| __/ _ \ '_ ` _ \  | | '_ \|  _/ _ \ 
+ *    \__ \ |_| \__ \ ||  __/ | | | | | | | | | | || (_) |
+ *    |___/\__, |___/\__\___|_| |_| |_| |_|_| |_|_| \___/ 
+ *          __/ |                                         
+ *         |___/                                          
+ */
 //compares the time taken to multiply floats and doubles, without cache effects
 void test_speed_flt_vs_dbl_no_cache_effects();
 //compares the time taken to multiply floats and doubles, with cache effects
 void test_speed_flt_vs_dbl_yes_cache_effects();
 // prints info on the hardware and software of the system
 void print_system_info();
+
+
+/***
+ *     _____ ______ _   _         __    _____ ______ _   _                                                _           _   _             
+ *    |  __ \| ___ \ | | |       / /   /  __ \| ___ \ | | |                                              (_)         | | (_)            
+ *    | |  \/| |_/ / | | |      / /    | /  \/| |_/ / | | |      ___ ___  _ __ ___  _ __ ___  _   _ _ __  _  ___ __ _| |_ _  ___  _ __  
+ *    | | __ |  __/| | | |     / /     | |    |  __/| | | |     / __/ _ \| '_ ` _ \| '_ ` _ \| | | | '_ \| |/ __/ _` | __| |/ _ \| '_ \ 
+ *    | |_\ \| |   | |_| |    / /      | \__/\| |   | |_| |    | (_| (_) | | | | | | | | | | | |_| | | | | | (_| (_| | |_| | (_) | | | |
+ *     \____/\_|    \___/    /_/        \____/\_|    \___/      \___\___/|_| |_| |_|_| |_| |_|\__,_|_| |_|_|\___\__,_|\__|_|\___/|_| |_|
+ *                                                                                                                                      
+ *                                                                                                                                      
+ */
+
+/*
+Example use:
+
+void perhaps_sync_with_GPU(NeighLDDiscoverer* thing){
+    if(!USE_GPU){
+        return;}
+    // check if the GPU is requesting a sync, and that the previous sync signal has been assimilated
+    if(is_requesting_now(&thing->GPU_CPU_comms_neighsLD->sync) && !is_ready_now(&thing->GPU_CPU_comms_neighsLD->sync)){
+        // wait for the subthreads to finish
+        wait_full_path_finished(thing);
+        // copy the neighsLD to the buffer, safely
+        pthread_mutex_lock(thing->GPU_CPU_comms_neighsLD->sync.mutex_buffer);
+        memcpy(as_uint32_1d(thing->neighsLD, thing->N, thing->Kld), thing->GPU_CPU_comms_neighsLD->buffer, thing->N*thing->Kld*sizeof(uint32_t));
+        pthread_mutex_unlock(thing->GPU_CPU_comms_neighsLD->sync.mutex_buffer);
+        // notify the GPU that the data is ready
+        notify_ready(&thing->GPU_CPU_comms_neighsLD->sync);
+    }
+}
+*/
+
+// a struct that contains flags and mutexes for synchronisation
+typedef struct {
+    // request a buffer update
+    pthread_mutex_t* mutex_request;
+    bool             flag_request;
+    // notify that the buffer has been updated 
+    pthread_mutex_t* mutex_ready;
+    bool             flag_ready;
+    // mutex for the buffer itself
+    pthread_mutex_t* mutex_buffer;
+} GPU_CPU_sync;
+
+// a struct that contains a float buffer
+typedef struct {
+    GPU_CPU_sync     sync;
+    float*           buffer;
+} GPU_CPU_float_buffer;
+
+// a struct that contains a uint32_t buffer
+typedef struct {
+    GPU_CPU_sync     sync;
+    uint32_t*        buffer;
+} GPU_CPU_uint32_buffer;
+
+GPU_CPU_float_buffer*  malloc_GPU_CPU_float_buffer(uint32_t size);
+GPU_CPU_uint32_buffer* malloc_GPU_CPU_uint32_buffer(uint32_t size);
+bool is_requesting_now(GPU_CPU_sync* sync);
+bool is_ready_now(GPU_CPU_sync* sync);
+void notify_ready(GPU_CPU_sync* sync);
+void notify_request(GPU_CPU_sync* sync);
+
+
+
 
 #endif // SYSTEM_H

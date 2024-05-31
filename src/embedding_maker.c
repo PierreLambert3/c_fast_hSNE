@@ -15,10 +15,17 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
     thing->is_running = false;
     thing->work_type = 0;
     thing->N = N;
+    thing->Mld = Mld;
     thing->mutexes_sizeN = mutexes_sizeN;
     thing->hparam_LDkernel_alpha       = malloc_float(1, 1.0f);
     thing->mutex_hparam_LDkernel_alpha = mutex_allocate_and_init();
     thing->Xld_cpu = Xld;
+
+    printf("OKOKOKOK\n");
+    if(thing->Xld_cpu == NULL){
+        dying_breath("cpu_array is NULL   (new_EmbeddingMaker_GPU)");}
+
+
     thing->neighsLD_cpu = neighsLD;
     thing->neighsHD_cpu = neighsHD;
     thing->furthest_neighdists_LD_cpu = furthest_neighdists_LD;
@@ -41,30 +48,12 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
     thing->P_cuda = malloc_float(N*Khd, 0.0f);
     memcpy(thing->P_cuda, as_float_1d(thing->P_cpu, N, Khd), N*Khd*sizeof(float));
     thing->Qdenom_cuda = 1.0f;
+
+
+    if(thing->Xld_cpu == NULL){
+        dying_breath("cpu_array is NULL   (new_EmbeddingMaker_GPU)");}
 }
 
-
-/*
-- neighsLD_cpu -> neighsLD_cuda
-- neighsHD_cpu -> neighsHD_cuda
-- P_cpu -> P_cuda
-*/
-void safely_sync_with_CPU(EmbeddingMaker_GPU* thing){
-    prendre les mutex les uns apres les autres puis un gros memcpy puis unlock les uns apres lesautres?
-    for(uint32_t i=0; i<thing->N; i++){
-        pthread_mutex_lock(&thing->mutexes_sizeN[i]);
-        
-        continuer ici
-
-        pthread_mutex_unlock(&thing->mutexes_sizeN[i]);
-    }
-}
-
-
-solution truovées avec buffer et deux flags, cf le papier.
-solution truovées avec buffer et deux flags, cf le papier.
-solution truovées avec buffer et deux flags, cf le papier.
-solution truovées avec buffer et deux flags, cf le papier.
 /***
  *    _________     _______  _        _______                 _______           ______   _______ 
  *    \__   __/    (  ____ \( (    /|(  ____ \               (  ____ \|\     /|(  __  \ (  ___  )
@@ -76,6 +65,35 @@ solution truovées avec buffer et deux flags, cf le papier.
  *       )_(       \_______)|/    )_)(_______/               (_______/(_______)(______/ |/     \|
  *                                                                                               
  */
+
+
+// this function sends the Xld and furthest_neighdists_LD to the CPU, in an UNSAFE manner
+static void send_Xld_and_furthest_neighdists_LD_to_CPU(EmbeddingMaker_GPU* thing){
+
+    if(thing->Xld_cpu == NULL){
+        dying_breath("cpu_array is NULL   (send_Xld_and_furthest_neighdists_LD_to_CPU)");}
+
+    // for(uint32_t i=0; i<thing->N; i++){
+    //     pthread_mutex_lock(&thing->mutexes_sizeN[i]);
+    //     // check not null
+    //     if(thing->Xld_cpu[i] == NULL){
+    //         dying_breath("thing->Xld_cpu[i] is NULL");}
+    //     // print i, N, j, Mld
+    //     printf("i=%d, N=%d j=%d, Mld=%d\n", i, thing->N, 0, thing->Mld);
+
+    //     /* for(uint32_t j=0; j<thing->Mld; j++){
+    //         float value_cpu = thing->Xld_cpu[i][j];
+    //         printf("thing->Xld_cpu[i][j] = %f\n", value_cpu);
+    //     }
+    //     pthread_mutex_unlock(&thing->mutexes_sizeN[i]); */
+    // }
+
+    // Xld: GPU to CPU
+    // memcpy(as_float_1d(thing->Xld_cpu, thing->N, thing->Mld), thing->Xld_base_cuda, thing->N*thing->Mld*sizeof(float));
+    /* // furthest_neighdists_LD: GPU to CPU
+    memcpy(thing->furthest_neighdists_LD_cpu, thing->furthest_neighdists_LD_cuda, thing->N*sizeof(float)); */
+}
+
 
 /*
 This function performs the gradient-descent part of t-SNE, using the neighbour sets (LD and HD) and the P matrix that are continuously updated by other threads in parallel.
@@ -94,9 +112,21 @@ Description of the periodic exchanges with other threads:
 */
 void* routine_EmbeddingMaker_GPU(void* arg){
     EmbeddingMaker_GPU* thing = (EmbeddingMaker_GPU*) arg;
+
+    printf("thing->N = %d\n", thing->N);
+
+    if(thing->Xld_cpu == NULL){
+        dying_breath("cpu_array is NULL     routine_EmbeddingMaker_GPU");}
+
+
+    thing->is_running = true;
     clock_t start_time, current_time;
     start_time = clock();
     while(thing->is_running){
+
+        
+
+        // ~~~~~~~~~~ gradient descent ~~~~~~~~~~
         // gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion
         // ...
 
@@ -106,17 +136,15 @@ void* routine_EmbeddingMaker_GPU(void* arg){
         // apply momenta to Xld, regenerate Xld_nesterov, decay momenta
         // ...
 
-        // in an UNSAFE manner, update Xld_cpu and furthest_neighdists_LD_cpu
-        // ...
-
-        // every 0.5 seconds, update neighsLD_cuda and neighsHD_cuda in a SAFE manner
-        current_time = clock();
-        double time_elapsed = ((double) (current_time - start_time)) / CLOCKS_PER_SEC;
+        // ~~~~~~~~~~ sync with CPU workers ~~~~~~~~~~
+        // 1) "UNSAFE" syncs (only 1 writer so it's okay)
+        send_Xld_and_furthest_neighdists_LD_to_CPU(thing);
+        // 2) SAFE syncs, periodically
+        double time_elapsed = ((double) (clock() - start_time)) / CLOCKS_PER_SEC;
         if(time_elapsed > GUI_CPU_SYNC_PERIOD){
-            safely_sync_with_CPU(thing);
+            // ...
             start_time = clock();
         }
-        
         // printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
     }
     return NULL; 
@@ -132,6 +160,8 @@ void new_EmbeddingMaker(EmbeddingMaker* thing, uint32_t N, uint32_t Mld, uint32_
         thing->maker_gpu = (EmbeddingMaker_GPU*) malloc(sizeof(EmbeddingMaker_GPU));
         new_EmbeddingMaker_GPU(thing->maker_gpu, N, Mld, thread_rand_seed, mutexes_sizeN,\
             Xld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD, P, mutex_P);
+        if(thing->maker_gpu->Xld_cpu == NULL){
+            dying_breath("cpu_array is NULL     efter new_EmbeddingMaker_GPU");}
     } else {
         thing->maker_cpu = (EmbeddingMaker_CPU*) malloc(sizeof(EmbeddingMaker_CPU));
         new_EmbeddingMaker_CPU(thing->maker_cpu, N, Mld, thread_rand_seed, mutexes_sizeN,\
@@ -152,6 +182,7 @@ sous-poudrer le tout avec des gradients de MDS
 // printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
 
 void destroy_EmbeddingMaker(EmbeddingMaker* thing){
+    dying_breath("destroy_EmbeddingMaker not implemented yet");
     if(thing->maker_cpu != NULL){
         free(thing->maker_cpu);
     }
@@ -168,14 +199,18 @@ void* routine_EmbeddingMaker_CPU(void* arg){
     return NULL; 
 }
 
+
+J AI TROUVé LE BUG
+
 void start_thread_EmbeddingMaker(EmbeddingMaker* thing){
     if(USE_GPU){
-        if(pthread_create(&thing->thread, NULL, routine_EmbeddingMaker_GPU, thing) != 0){
+
+        if(pthread_create(&thing->thread, NULL, routine_EmbeddingMaker_GPU, thing->maker_gpu) != 0){
             dying_breath("pthread_create routine_EmbeddingMaker failed");}
     }
     else {
         dying_breath("CPU-based embedding maker not implemented yet");
-        if(pthread_create(&thing->thread, NULL, routine_EmbeddingMaker_CPU, thing) != 0){
+        if(pthread_create(&thing->thread, NULL, routine_EmbeddingMaker_CPU, thing->maker_cpu) != 0){
             dying_breath("pthread_create routine_EmbeddingMaker failed");}
     }
     printf("TODO : understand CUDA streams! \n");

@@ -17,8 +17,13 @@ void new_NeighLDDiscoverer(NeighLDDiscoverer* thing, uint32_t _N_, uint32_t* thr
     thing->threads_waiting_for_task = malloc_bool(max_nb_of_subthreads, true);
     thing->subthread_data           = (SubthreadData*)malloc(sizeof(SubthreadData) * max_nb_of_subthreads);
     thing->subthreads_mutexes       = mutexes_allocate_and_init(max_nb_of_subthreads);
+    
+    // coordinating LD/HD compute (want good balance between the two)
     thing->mutex_LDHD_balance       = mutex_LDHD_balance;
     thing->other_space_pct          = other_space_pct;
+
+    // safe GPU / CPU communication: neighsLD
+    thing->GPU_CPU_comms_neighsLD = malloc_GPU_CPU_uint32_buffer(_N_*_Kld_);
 
     // initialise algorithm data on this thread
     thing->N = _N_;
@@ -71,6 +76,40 @@ void destroy_NeighLDDiscoverer(NeighLDDiscoverer* thing){
     free(thing);
 }
 
+static void wait_full_path_finished(NeighLDDiscoverer* thing){
+    // check each subthread and sleep 1pct of a second untill all are waiting for a task
+    bool all_idle = false;
+    while(!all_idle){
+        all_idle = true;
+        for(uint32_t i = 0u; i < thing->N_reserved_subthreads; i++){
+            pthread_mutex_lock(&thing->subthreads_mutexes[i]);
+            if(!thing->threads_waiting_for_task[i]){
+                all_idle = false;
+            }
+            pthread_mutex_unlock(&thing->subthreads_mutexes[i]);
+        }
+        if(all_idle){
+            sleep_ms(10); // 10 ms (1% of a second)
+        }
+    }
+}
+
+// carefull, not really safe of multiple threads call this (here only one thread so it's ok)
+void NeighLDDiscoverer_perhaps_sync_with_GPU(NeighLDDiscoverer* thing){
+    if(!USE_GPU){
+        return;}
+    // check if the GPU is requesting a sync, and that the previous sync signal has been assimilated
+    if(is_requesting_now(&thing->GPU_CPU_comms_neighsLD->sync) && !is_ready_now(&thing->GPU_CPU_comms_neighsLD->sync)){
+        // wait for the subthreads to finish
+        wait_full_path_finished(thing);
+        // copy the neighsLD to the buffer, safely
+        pthread_mutex_lock(thing->GPU_CPU_comms_neighsLD->sync.mutex_buffer);
+        memcpy(as_uint32_1d(thing->neighsLD, thing->N, thing->Kld), thing->GPU_CPU_comms_neighsLD->buffer, thing->N*thing->Kld*sizeof(uint32_t));
+        pthread_mutex_unlock(thing->GPU_CPU_comms_neighsLD->sync.mutex_buffer);
+        // notify the GPU that the data is ready
+        notify_ready(&thing->GPU_CPU_comms_neighsLD->sync);
+    }
+}
 
 bool attempt_to_add_LD_neighbour(uint32_t i, uint32_t j, float euclsq_ij, SubthreadData* thing){
     // 1: can trust dists in LD : recompute all dists to find the 2 furthest neighbours
@@ -599,19 +638,13 @@ void* routine_NeighLDDiscoverer(void* arg){
                 cursor += thing->subthreads_chunck_size;
                 if(cursor >= thing->N){
                     cursor = 0;
-                    // print the mean furthest dists for all points in N
-                    float mean_dist = 0.0f;
-                    for(uint32_t i = 0; i < thing->N; i++){
-                        mean_dist += thing->furthest_neighdists_LD[i];
-                    }
-                    mean_dist /= (float)thing->N;
-                    // printf("mean furthest dists for all points in N: %f\n", mean_dist);
+                    NeighLDDiscoverer_perhaps_sync_with_GPU(thing);
                 }
             }
             pthread_mutex_unlock(&thing->subthreads_mutexes[i]);
         } 
-        usleep(10000); // 1% of a second, prevent the thread from taking too much CPU time
-        printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
+        sleep_ms(10);
+        // printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
     }
     dying_breath("routine_NeighLDDiscoverer ended");
     return NULL;

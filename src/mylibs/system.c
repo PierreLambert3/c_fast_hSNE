@@ -1,6 +1,8 @@
 #include "system.h"
 #include "constants_global.h"
 
+
+
 void dying_breath(const char* message){
     set_console_colour_error();
     printf("\n\n\n%s\n\n\n", message);
@@ -15,6 +17,21 @@ void die(){
     exit(1);
 }
 
+void sleep_ms(uint32_t n_ms){
+    usleep(n_ms * 1000);
+}
+
+
+/***
+ *                 _               _                                                                 _   
+ *                | |             | |                                                               | |  
+ *      ___  _   _| |_ _ __  _   _| |_   _ __ ___   __ _ _ __   __ _  __ _  ___ _ __ ___   ___ _ __ | |_ 
+ *     / _ \| | | | __| '_ \| | | | __| | '_ ` _ \ / _` | '_ \ / _` |/ _` |/ _ \ '_ ` _ \ / _ \ '_ \| __|
+ *    | (_) | |_| | |_| |_) | |_| | |_  | | | | | | (_| | | | | (_| | (_| |  __/ | | | | |  __/ | | | |_ 
+ *     \___/ \__,_|\__| .__/ \__,_|\__| |_| |_| |_|\__,_|_| |_|\__,_|\__, |\___|_| |_| |_|\___|_| |_|\__|
+ *                    | |                                             __/ |                              
+ *                    |_|                                            |___/                               
+ */
 void set_console_colour(uint8_t r, uint8_t g, uint8_t b) {
     printf("\e[38;2;%d;%d;%dm", r, g, b);
 }
@@ -31,7 +48,16 @@ void reset_console_colour(){
     printf("\e[38;2;%d;%d;%dm", TERMINAL_TEXT_COLOUR_R, TERMINAL_TEXT_COLOUR_G, TERMINAL_TEXT_COLOUR_B);
 }
 
-// ------------------- memory allocation -------------------
+/***
+ *                                               
+ *                                               
+ *     _ __ ___   ___ _ __ ___   ___  _ __ _   _ 
+ *    | '_ ` _ \ / _ \ '_ ` _ \ / _ \| '__| | | |
+ *    | | | | | |  __/ | | | | | (_) | |  | |_| |
+ *    |_| |_| |_|\___|_| |_| |_|\___/|_|   \__, |
+ *                                          __/ |
+ *                                         |___/ 
+ */
 pthread_mutex_t* mutexes_allocate_and_init(uint32_t size){
     pthread_mutex_t* mutexes = (pthread_mutex_t*)malloc(size * sizeof(pthread_mutex_t));
     if (mutexes == NULL) {
@@ -74,7 +100,6 @@ float* malloc_float(uint32_t size, float init_val) {
     }
     return array;
 }
-
 
 double* malloc_double(uint32_t size, double init_val) {
     double* array = (double*)malloc(size * sizeof(double));
@@ -182,7 +207,16 @@ void free_array(void* array){
     free(array);
 }
 
-
+/***
+ *                   _                   _        __      
+ *                  | |                 (_)      / _|     
+ *     ___ _   _ ___| |_ ___ _ __ ___    _ _ __ | |_ ___  
+ *    / __| | | / __| __/ _ \ '_ ` _ \  | | '_ \|  _/ _ \ 
+ *    \__ \ |_| \__ \ ||  __/ | | | | | | | | | | || (_) |
+ *    |___/\__, |___/\__\___|_| |_| |_| |_|_| |_|_| \___/ 
+ *          __/ |                                         
+ *         |___/                                          
+ */
 void test_speed_flt_vs_dbl_no_cache_effects(){
     printf("\n");
     printf("\n");
@@ -370,4 +404,85 @@ void print_system_info(){
 
     // int nthreads = omp_get_max_threads();
     // printf("This computer can run %d threads\n", nthreads);
+}
+
+/***
+ *     _____ ______ _   _         __    _____ ______ _   _                                                _           _   _             
+ *    |  __ \| ___ \ | | |       / /   /  __ \| ___ \ | | |                                              (_)         | | (_)            
+ *    | |  \/| |_/ / | | |      / /    | /  \/| |_/ / | | |      ___ ___  _ __ ___  _ __ ___  _   _ _ __  _  ___ __ _| |_ _  ___  _ __  
+ *    | | __ |  __/| | | |     / /     | |    |  __/| | | |     / __/ _ \| '_ ` _ \| '_ ` _ \| | | | '_ \| |/ __/ _` | __| |/ _ \| '_ \ 
+ *    | |_\ \| |   | |_| |    / /      | \__/\| |   | |_| |    | (_| (_) | | | | | | | | | | | |_| | | | | | (_| (_| | |_| | (_) | | | |
+ *     \____/\_|    \___/    /_/        \____/\_|    \___/      \___\___/|_| |_| |_|_| |_| |_|\__,_|_| |_|_|\___\__,_|\__|_|\___/|_| |_|
+ *                                                                                                                                      
+ *                                                                                                                                      
+ */
+
+static void init_GPU_CPU_sync(GPU_CPU_sync* sync) {
+    sync->mutex_request = mutex_allocate_and_init();
+    sync->mutex_ready   = mutex_allocate_and_init();
+    sync->mutex_buffer  = mutex_allocate_and_init();
+    sync->flag_request  = false;
+    sync->flag_ready    = false;
+}
+
+static void init_GPU_CPU_float_buffer(GPU_CPU_float_buffer* thing, uint32_t size){
+    thing->buffer = malloc_float(size, 0.f);
+    init_GPU_CPU_sync(&thing->sync);
+}
+
+static void init_GPU_CPU_uint32_buffer(GPU_CPU_uint32_buffer* thing, uint32_t size){
+    thing->buffer = malloc_uint32_t(size, 0u);
+    init_GPU_CPU_sync(&thing->sync);
+}
+
+GPU_CPU_float_buffer* malloc_GPU_CPU_float_buffer(uint32_t size){
+    GPU_CPU_float_buffer* thing = (GPU_CPU_float_buffer*)malloc(sizeof(GPU_CPU_float_buffer));
+    if (thing == NULL) {
+        die("Failed to allocate memory for GPU_CPU_float_buffer");}
+    init_GPU_CPU_float_buffer(thing, size);
+    return thing;
+}
+
+GPU_CPU_uint32_buffer* malloc_GPU_CPU_uint32_buffer(uint32_t size){
+    GPU_CPU_uint32_buffer* thing = (GPU_CPU_uint32_buffer*)malloc(sizeof(GPU_CPU_uint32_buffer));
+    if (thing == NULL) {
+        die("Failed to allocate memory for GPU_CPU_uint32_buffer");}
+    init_GPU_CPU_uint32_buffer(thing, size);
+    return thing;
+}
+
+bool is_requesting_now(GPU_CPU_sync* sync){
+    pthread_mutex_lock(sync->mutex_request);
+    bool flag = sync->flag_request;
+    pthread_mutex_unlock(sync->mutex_request);
+    return flag;
+}
+
+bool is_ready_now(GPU_CPU_sync* sync){
+    pthread_mutex_lock(sync->mutex_ready);
+    bool flag = sync->flag_ready;
+    pthread_mutex_unlock(sync->mutex_ready);
+    return flag;
+}
+
+void notify_ready(GPU_CPU_sync* sync){
+    // set request to false
+    pthread_mutex_lock(sync->mutex_request);
+    sync->flag_request = false;
+    pthread_mutex_unlock(sync->mutex_request);
+    // notify that the buffer is ready
+    pthread_mutex_lock(sync->mutex_ready);
+    sync->flag_ready = true;
+    pthread_mutex_unlock(sync->mutex_ready);
+}
+
+void notify_request(GPU_CPU_sync* sync){
+    // set ready to false
+    pthread_mutex_lock(sync->mutex_ready);
+    sync->flag_ready = false;
+    pthread_mutex_unlock(sync->mutex_ready);
+    // notify that the buffer is requested
+    pthread_mutex_lock(sync->mutex_request);
+    sync->flag_request = true;
+    pthread_mutex_unlock(sync->mutex_request);
 }
