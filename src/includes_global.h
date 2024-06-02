@@ -7,6 +7,7 @@
 #include <math.h>
 #include <SDL.h>
 #include <SDL2/SDL_ttf.h>
+#include <cuda_runtime.h>
 
 #include "mylibs/system.h"
 #include "constants_global.h"

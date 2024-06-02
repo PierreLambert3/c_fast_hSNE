@@ -14,8 +14,26 @@
 
 void dying_breath(const char* message);
 void die();
-
 void sleep_ms(uint32_t n_ms);
+
+/***
+ *                   _                   _        __      
+ *                  | |                 (_)      / _|     
+ *     ___ _   _ ___| |_ ___ _ __ ___    _ _ __ | |_ ___  
+ *    / __| | | / __| __/ _ \ '_ ` _ \  | | '_ \|  _/ _ \ 
+ *    \__ \ |_| \__ \ ||  __/ | | | | | | | | | | || (_) |
+ *    |___/\__, |___/\__\___|_| |_| |_| |_|_| |_|_| \___/ 
+ *          __/ |                                         
+ *         |___/                                          
+ */
+//compares the time taken to multiply floats and doubles, without cache effects
+void test_speed_flt_vs_dbl_no_cache_effects();
+//compares the time taken to multiply floats and doubles, with cache effects
+void test_speed_flt_vs_dbl_yes_cache_effects();
+// prints info on the hardware and software of the system
+void print_system_info();
+
+
 
 /***
  *                 _               _                                                                 _   
@@ -44,15 +62,15 @@ void reset_console_colour();
  *                                          __/ |
  *                                         |___/ 
  */
-pthread_mutex_t* mutexes_allocate_and_init(uint32_t size);
+pthread_mutex_t* mutexes_allocate_and_init(uint32_t n_elements);
 pthread_mutex_t* mutex_allocate_and_init();
 // malloc handlers for 1d arrays
-bool*      malloc_bool(uint32_t size, bool init_val);
-float*     malloc_float(uint32_t size, float init_val);
-double*    malloc_double(uint32_t size, double init_val);
-uint32_t*  malloc_uint32_t(uint32_t size, uint32_t init_val);
-uint16_t*  malloc_uint16_t(uint32_t size, uint16_t init_val);
-uint8_t*   malloc_uint8_t(uint32_t size, uint8_t init_val);
+bool*      malloc_bool(uint32_t n_elements, bool init_val);
+float*     malloc_float(uint32_t n_elements, float init_val);
+double*    malloc_double(uint32_t n_elements, double init_val);
+uint32_t*  malloc_uint32_t(uint32_t n_elements, uint32_t init_val);
+uint16_t*  malloc_uint16_t(uint32_t n_elements, uint16_t init_val);
+uint8_t*   malloc_uint8_t(uint32_t n_elements, uint8_t init_val);
 // malloc handlers for 2d matrices
 bool**     malloc_bool_matrix(uint32_t n, uint32_t m, bool init_val);
 float**    malloc_float_matrix(uint32_t n, uint32_t m, float init_val);
@@ -73,33 +91,30 @@ void       free_array(void* array);
 
 
 
+
+
+
 /***
- *                   _                   _        __      
- *                  | |                 (_)      / _|     
- *     ___ _   _ ___| |_ ___ _ __ ___    _ _ __ | |_ ___  
- *    / __| | | / __| __/ _ \ '_ ` _ \  | | '_ \|  _/ _ \ 
- *    \__ \ |_| \__ \ ||  __/ | | | | | | | | | | || (_) |
- *    |___/\__, |___/\__\___|_| |_| |_| |_|_| |_|_| \___/ 
- *          __/ |                                         
- *         |___/                                          
+ *       ____ _   _ ____    _                                          _ 
+ *      / ___| | | |  _ \  / \     _    __ _  ___ _ __   ___ _ __ __ _| |
+ *     | |   | | | | | | |/ _ \   (_)  / _` |/ _ \ '_ \ / _ \ '__/ _` | |
+ *     | |___| |_| | |_| / ___ \   _  | (_| |  __/ | | |  __/ | | (_| | |
+ *      \____|\___/|____/_/   \_\ (_)  \__, |\___|_| |_|\___|_|  \__,_|_|
+ *                                     |___/                             
  */
-//compares the time taken to multiply floats and doubles, without cache effects
-void test_speed_flt_vs_dbl_no_cache_effects();
-//compares the time taken to multiply floats and doubles, with cache effects
-void test_speed_flt_vs_dbl_yes_cache_effects();
-// prints info on the hardware and software of the system
-void print_system_info();
 
+struct cudaDeviceProp initialise_cuda();
+void print_cuda_device_info(struct cudaDeviceProp prop);
+void malloc_1d_float_cuda(float** ptr_array_GPU, uint32_t n_elements);
+void malloc_1d_uint32_cuda(uint32_t** ptr_array_GPU, uint32_t n_elements);
 
 /***
- *     _____ ______ _   _         __    _____ ______ _   _                                                _           _   _             
- *    |  __ \| ___ \ | | |       / /   /  __ \| ___ \ | | |                                              (_)         | | (_)            
- *    | |  \/| |_/ / | | |      / /    | /  \/| |_/ / | | |      ___ ___  _ __ ___  _ __ ___  _   _ _ __  _  ___ __ _| |_ _  ___  _ __  
- *    | | __ |  __/| | | |     / /     | |    |  __/| | | |     / __/ _ \| '_ ` _ \| '_ ` _ \| | | | '_ \| |/ __/ _` | __| |/ _ \| '_ \ 
- *    | |_\ \| |   | |_| |    / /      | \__/\| |   | |_| |    | (_| (_) | | | | | | | | | | | |_| | | | | | (_| (_| | |_| | (_) | | | |
- *     \____/\_|    \___/    /_/        \____/\_|    \___/      \___\___/|_| |_| |_|_| |_| |_|\__,_|_| |_|_|\___\__,_|\__|_|\___/|_| |_|
- *                                                                                                                                      
- *                                                                                                                                      
+ *       ____ _   _ ____    _           ____ ____  _   _   ______ ____  _   _                                     
+ *      / ___| | | |  _ \  / \     _   / ___|  _ \| | | | / / ___|  _ \| | | |   ___ ___  _ __ ___  _ __ ___  ___ 
+ *     | |   | | | | | | |/ _ \   (_) | |   | |_) | | | |/ / |  _| |_) | | | |  / __/ _ \| '_ ` _ \| '_ ` _ \/ __|
+ *     | |___| |_| | |_| / ___ \   _  | |___|  __/| |_| / /| |_| |  __/| |_| | | (_| (_) | | | | | | | | | | \__ \
+ *      \____|\___/|____/_/   \_\ (_)  \____|_|    \___/_/  \____|_|    \___/   \___\___/|_| |_| |_|_| |_| |_|___/
+ *                                                                                                                
  */
 
 /*

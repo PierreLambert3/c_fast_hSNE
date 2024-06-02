@@ -48,7 +48,7 @@ typedef struct {
     uint32_t*       neighsHD_cuda;
     float*          furthest_neighdists_LD_cuda;
     float*          P_cuda; 
-    float           Qdenom_cuda;
+    float*          Qdenom_cuda;
 } EmbeddingMaker_GPU;
 
 typedef struct {

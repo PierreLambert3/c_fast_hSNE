@@ -58,11 +58,11 @@ void reset_console_colour(){
  *                                          __/ |
  *                                         |___/ 
  */
-pthread_mutex_t* mutexes_allocate_and_init(uint32_t size){
-    pthread_mutex_t* mutexes = (pthread_mutex_t*)malloc(size * sizeof(pthread_mutex_t));
+pthread_mutex_t* mutexes_allocate_and_init(uint32_t n_elements){
+    pthread_mutex_t* mutexes = (pthread_mutex_t*)malloc(n_elements * sizeof(pthread_mutex_t));
     if (mutexes == NULL) {
         die("Failed to allocate memory for mutexes");}
-    for (uint32_t i = 0; i < size; i++) {
+    for (uint32_t i = 0; i < n_elements; i++) {
         if (pthread_mutex_init(&mutexes[i], NULL) != 0) {
             die("Failed to initialise mutex");}
     }
@@ -79,67 +79,67 @@ pthread_mutex_t* mutex_allocate_and_init(){
 }
 
 // malloc handlers for 1d arrays
-bool* malloc_bool(uint32_t size, bool init_val) {
-    bool* array = (bool*)malloc(size * sizeof(bool));
+bool* malloc_bool(uint32_t n_elements, bool init_val) {
+    bool* array = (bool*)malloc(n_elements * sizeof(bool));
     if (array == NULL) {
         die("Failed to allocate memory for bool array");
     }
-    for (uint32_t i = 0; i < size; i++) {
+    for (uint32_t i = 0; i < n_elements; i++) {
         array[i] = init_val;
     }
     return array;
 }
 
-float* malloc_float(uint32_t size, float init_val) {
-    float* array = (float*)malloc(size * sizeof(float));
+float* malloc_float(uint32_t n_elements, float init_val) {
+    float* array = (float*)malloc(n_elements * sizeof(float));
     if (array == NULL) {
         die("Failed to allocate memory for float array");
     }
-    for (uint32_t i = 0; i < size; i++) {
+    for (uint32_t i = 0; i < n_elements; i++) {
         array[i] = init_val;
     }
     return array;
 }
 
-double* malloc_double(uint32_t size, double init_val) {
-    double* array = (double*)malloc(size * sizeof(double));
+double* malloc_double(uint32_t n_elements, double init_val) {
+    double* array = (double*)malloc(n_elements * sizeof(double));
     if (array == NULL) {
         die("Failed to allocate memory for double array");
     }
-    for (uint32_t i = 0; i < size; i++) {
+    for (uint32_t i = 0; i < n_elements; i++) {
         array[i] = init_val;
     }
     return array;
 }
 
-uint32_t* malloc_uint32_t(uint32_t size, uint32_t init_val) {
-    uint32_t* array = (uint32_t*)malloc(size * sizeof(uint32_t));
+uint32_t* malloc_uint32_t(uint32_t n_elements, uint32_t init_val) {
+    uint32_t* array = (uint32_t*)malloc(n_elements * sizeof(uint32_t));
     if (array == NULL) {
         die("Failed to allocate memory for uint32_t array");
     }
-    for (uint32_t i = 0; i < size; i++) {
+    for (uint32_t i = 0; i < n_elements; i++) {
         array[i] = init_val;
     }
     return array;
 }
 
-uint16_t* malloc_uint16_t(uint32_t size, uint16_t init_val) {
-    uint16_t* array = (uint16_t*)malloc(size * sizeof(uint16_t));
+uint16_t* malloc_uint16_t(uint32_t n_elements, uint16_t init_val) {
+    uint16_t* array = (uint16_t*)malloc(n_elements * sizeof(uint16_t));
     if (array == NULL) {
         die("Failed to allocate memory for uint16_t array");
     }
-    for (uint32_t i = 0; i < size; i++) {
+    for (uint32_t i = 0; i < n_elements; i++) {
         array[i] = init_val;
     }
     return array;
 }
 
-uint8_t* malloc_uint8_t(uint32_t size, uint8_t init_val) {
-    uint8_t* array = (uint8_t*)malloc(size * sizeof(uint8_t));
+uint8_t* malloc_uint8_t(uint32_t n_elements, uint8_t init_val) {
+    uint8_t* array = (uint8_t*)malloc(n_elements * sizeof(uint8_t));
     if (array == NULL) {
         die("Failed to allocate memory for uint8_t array");
     }
-    for (uint32_t i = 0; i < size; i++) {
+    for (uint32_t i = 0; i < n_elements; i++) {
         array[i] = init_val;
     }
     return array;
@@ -407,14 +407,65 @@ void print_system_info(){
 }
 
 /***
- *     _____ ______ _   _         __    _____ ______ _   _                                                _           _   _             
- *    |  __ \| ___ \ | | |       / /   /  __ \| ___ \ | | |                                              (_)         | | (_)            
- *    | |  \/| |_/ / | | |      / /    | /  \/| |_/ / | | |      ___ ___  _ __ ___  _ __ ___  _   _ _ __  _  ___ __ _| |_ _  ___  _ __  
- *    | | __ |  __/| | | |     / /     | |    |  __/| | | |     / __/ _ \| '_ ` _ \| '_ ` _ \| | | | '_ \| |/ __/ _` | __| |/ _ \| '_ \ 
- *    | |_\ \| |   | |_| |    / /      | \__/\| |   | |_| |    | (_| (_) | | | | | | | | | | | |_| | | | | | (_| (_| | |_| | (_) | | | |
- *     \____/\_|    \___/    /_/        \____/\_|    \___/      \___\___/|_| |_| |_|_| |_| |_|\__,_|_| |_|_|\___\__,_|\__|_|\___/|_| |_|
- *                                                                                                                                      
- *                                                                                                                                      
+ *       ____ _   _ ____    _                                          _ 
+ *      / ___| | | |  _ \  / \     _    __ _  ___ _ __   ___ _ __ __ _| |
+ *     | |   | | | | | | |/ _ \   (_)  / _` |/ _ \ '_ \ / _ \ '__/ _` | |
+ *     | |___| |_| | |_| / ___ \   _  | (_| |  __/ | | |  __/ | | (_| | |
+ *      \____|\___/|____/_/   \_\ (_)  \__, |\___|_| |_|\___|_|  \__,_|_|
+ *                                     |___/                             
+ */
+
+struct cudaDeviceProp initialise_cuda(){
+    // Set the device to use
+    cudaError_t cuda_error = cudaSetDevice(0); // 0 is the default device
+    if (cuda_error != cudaSuccess) {
+        printf("error: %s\n", cudaGetErrorString(cuda_error));
+        dying_breath("Failed to set device");
+    }
+    // Get the device properties
+    struct cudaDeviceProp prop;
+    cuda_error = cudaGetDeviceProperties(&prop, 0);
+    if (cuda_error != cudaSuccess) {
+        printf("error: %s\n", cudaGetErrorString(cuda_error));
+        dying_breath("Failed to get device properties");
+    }
+    return prop;
+}
+
+void print_cuda_device_info(struct cudaDeviceProp prop){
+    printf("  Compute capability: %d.%d\n", prop.major, prop.minor);
+    printf("  Total global memory: %lu bytes\n", prop.totalGlobalMem);
+    printf("  Maximum threads per block: %d\n", prop.maxThreadsPerBlock);
+    printf("  Maximum block dimensions: (%d, %d, %d)\n", prop.maxThreadsDim[0], prop.maxThreadsDim[1], prop.maxThreadsDim[2]);
+    printf("  Maximum grid dimensions: (%d, %d, %d)\n", prop.maxGridSize[0], prop.maxGridSize[1], prop.maxGridSize[2]);
+    printf("  Memory clock rate: %d kHz\n", prop.memoryClockRate);
+    printf("  Memory bus width: %d bits\n", prop.memoryBusWidth);
+    printf("  Peak memory bandwidth: %f GB/s\n", 2.0 * prop.memoryClockRate * (prop.memoryBusWidth / 8) / 1.0e6);
+}
+
+void malloc_1d_float_cuda(float** ptr_array, uint32_t n_elements){
+    cudaError_t cuda_error = cudaMalloc((void**)ptr_array, n_elements * sizeof(float));
+    if (cuda_error != cudaSuccess) {
+        printf("error: %s\n", cudaGetErrorString(cuda_error));
+        dying_breath("Failed to allocate memory on GPU");
+    }
+}
+
+void malloc_1d_uint32_cuda(uint32_t** ptr_array, uint32_t n_elements){
+    cudaError_t cuda_error = cudaMalloc((void**)ptr_array, n_elements * sizeof(uint32_t));
+    if (cuda_error != cudaSuccess) {
+        printf("error: %s\n", cudaGetErrorString(cuda_error));
+        dying_breath("Failed to allocate memory on GPU");
+    }
+}
+
+/***
+ *       ____ _   _ ____    _           ____ ____  _   _   ______ ____  _   _                                     
+ *      / ___| | | |  _ \  / \     _   / ___|  _ \| | | | / / ___|  _ \| | | |   ___ ___  _ __ ___  _ __ ___  ___ 
+ *     | |   | | | | | | |/ _ \   (_) | |   | |_) | | | |/ / |  _| |_) | | | |  / __/ _ \| '_ ` _ \| '_ ` _ \/ __|
+ *     | |___| |_| | |_| / ___ \   _  | |___|  __/| |_| / /| |_| |  __/| |_| | | (_| (_) | | | | | | | | | | \__ \
+ *      \____|\___/|____/_/   \_\ (_)  \____|_|    \___/_/  \____|_|    \___/   \___\___/|_| |_| |_|_| |_| |_|___/
+ *                                                                                                                
  */
 
 static void init_GPU_CPU_sync(GPU_CPU_sync* sync) {

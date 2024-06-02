@@ -29,28 +29,57 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
     thing->P_cpu = P;
     thing->mutex_P = mutex_P;
 
+    // initialise CUDA adn get device properties
+    struct cudaDeviceProp prop = initialise_cuda();
+    print_cuda_device_info(prop);
+
     // safe GPU / CPU communication: neighsHD and Psym
     thing->GPU_CPU_comms_neighsHD = GPU_CPU_comms_neighsHD;
     thing->GPU_CPU_comms_neighsLD = GPU_CPU_comms_neighsLD;
     thing->GPU_CPU_comms_P        = GPU_CPU_comms_P;
 
     // things on GPU
-    thing->Xld_base_cuda = malloc_float(N*Mld, 0.0f);
-    memcpy(thing->Xld_base_cuda, as_float_1d(thing->Xld_cpu, N, Mld), N*Mld*sizeof(float));
-    thing->Xld_nesterov_cuda = malloc_float(N*Mld, 0.0f);
-    memcpy(thing->Xld_nesterov_cuda, as_float_1d(thing->Xld_cpu, N, Mld), N*Mld*sizeof(float));
-    thing->momenta_attraction_cuda = malloc_float(N*Mld, 0.0f);
-    thing->momenta_repulsion_far_cuda = malloc_float(N*Mld, 0.0f);
-    thing->momenta_repulsion_cuda = malloc_float(N*Mld, 0.0f);
-    thing->neighsLD_cuda = malloc_uint32_t(N*Kld, 0u);
-    memcpy(thing->neighsLD_cuda, as_uint32_1d(thing->neighsLD_cpu, N, Kld), N*Kld*sizeof(uint32_t));
-    thing->neighsHD_cuda = malloc_uint32_t(N*Khd, 0u);
-    memcpy(thing->neighsHD_cuda, as_uint32_1d(thing->neighsHD_cpu, N, Khd), N*Khd*sizeof(uint32_t));
-    thing->furthest_neighdists_LD_cuda = malloc_float(N, 0.0f);
-    memcpy(thing->furthest_neighdists_LD_cuda, furthest_neighdists_LD, N*sizeof(float));
-    thing->P_cuda = malloc_float(N*Khd, 0.0f);
-    memcpy(thing->P_cuda, as_float_1d(thing->P_cpu, N, Khd), N*Khd*sizeof(float));
-    thing->Qdenom_cuda = 1.0f;
+
+    // allocate on the GPU thing->Xld_base_cuda
+    // cudaError_t cudaMallocResult = cudaMalloc((void**) &thing->Xld_base_cuda, N*Mld*sizeof(float));
+    malloc_1d_float_cuda(&thing->Xld_base_cuda, N*Mld);
+
+    // ok, probleme dans ma fonction de malloc personnalisée (car ca marche avec cudaMalloc mais pas malloc_1d_float_cuda)
+
+    // copy content of Xld to Xld_base_cuda
+    cudaError_t cudaMemcpyResult = cudaMemcpy(thing->Xld_base_cuda, as_float_1d(Xld, N, Mld), N*Mld*sizeof(float), cudaMemcpyHostToDevice);
+    if(cudaMemcpyResult != cudaSuccess){
+        printf("ERROR: Failed to copy Xld to Xld_base_cuda. Error code: %s\n", cudaGetErrorString(cudaMemcpyResult));
+        die();
+    }
+    
+    // check that the copy was successful
+    float* Xld_base_cpu = malloc_float(N, Mld);
+    cudaMemcpy(Xld_base_cpu, thing->Xld_base_cuda, N*Mld*sizeof(float), cudaMemcpyDeviceToHost);
+    for(uint32_t i=0; i<N; i++){
+        for(uint32_t j=0; j<Mld; j++){
+            if(Xld_base_cpu[i*Mld + j] != Xld[i][j]){
+                printf("ERROR: Xld_base_cuda[%d][%d] = %f != Xld[%d][%d] = %f\n", i, j, Xld_base_cpu[i*Mld + j], i, j, Xld[i][j]);
+            }
+        }
+    }
+    dying_breath("OK GOOOD");
+    
+    die();
+    /*
+    // things on GPU
+    float*          Xld_base_cuda;     // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data
+    float*          Xld_nesterov_cuda; // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data
+    float*          momenta_attraction_cuda;   // will be on GPU as a 1d-array, use momenta_attraction[N] to access the 1d data
+    float*          momenta_repulsion_far_cuda;  // this will leak to neighbours 
+    float*          momenta_repulsion_cuda; 
+    uint32_t*       neighsLD_cuda;
+    uint32_t*       neighsHD_cuda;
+    float*          furthest_neighdists_LD_cuda;
+    float*          P_cuda; 
+    float*          Qdenom_cuda;
+    */
+
 }
 
 // depending on the (user-determined) use of GPU vs CPU, this initialises the appropriate struct
@@ -149,8 +178,8 @@ Description of the periodic exchanges with other threads:
 void* routine_EmbeddingMaker_GPU(void* arg){
     EmbeddingMaker_GPU* thing = (EmbeddingMaker_GPU*) arg;
     thing->is_running = true;
-    clock_t start_time, current_time;
-    start_time = clock();
+    /* clock_t start_time, current_time;
+    start_time = clock(); */
     while(thing->is_running){
         // ~~~~~~~~~~ gradient descent ~~~~~~~~~~
         // gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion
@@ -171,8 +200,8 @@ void* routine_EmbeddingMaker_GPU(void* arg){
             receive_neighs_and_P_from_CPU(thing);
             start_time = clock();
         } */
-        pour le moment, ^ en commentaires car je fais des cudaMemcpy mais Cda n est pas encore initialisé donc segfault
-        printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
+        // pour le moment, ^ en commentaires car je fais des cudaMemcpy mais Cda n est pas encore initialisé donc segfault
+        // printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
     }
     return NULL; 
 }
