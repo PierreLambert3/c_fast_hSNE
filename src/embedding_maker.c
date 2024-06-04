@@ -63,7 +63,9 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
             }
         }
     }
-    dying_breath("OK GOOOD");
+    set_console_colour(230, 100, 190);
+    printf("good copy of Xld to Xld_base_cuda\n");
+    dying_breath("OK GOOD");
     
     die();
     /*
