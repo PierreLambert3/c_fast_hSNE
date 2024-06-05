@@ -39,49 +39,41 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
     thing->GPU_CPU_comms_P        = GPU_CPU_comms_P;
 
     // things on GPU
-
-    // allocate on the GPU thing->Xld_base_cuda
-    // cudaError_t cudaMallocResult = cudaMalloc((void**) &thing->Xld_base_cuda, N*Mld*sizeof(float));
+    cudaError_t cuda_error;
     malloc_1d_float_cuda(&thing->Xld_base_cuda, N*Mld);
+    malloc_1d_float_cuda(&thing->Xld_nesterov_cuda, N*Mld);
+    malloc_1d_float_cuda(&thing->momenta_attraction_cuda, N*Mld);
+    malloc_1d_float_cuda(&thing->momenta_repulsion_far_cuda, N*Mld);
+    malloc_1d_float_cuda(&thing->momenta_repulsion_cuda, N*Mld);
+    malloc_1d_uint32_cuda(&thing->neighsLD_cuda, N*Kld);
+    malloc_1d_uint32_cuda(&thing->neighsHD_cuda, N*Khd);
+    malloc_1d_float_cuda(&thing->furthest_neighdists_LD_cuda, N);
+    malloc_1d_float_cuda(&thing->P_cuda, N*Khd);
+    malloc_1d_float_cuda(&thing->Qdenom_cuda, 1);
 
-    // ok, probleme dans ma fonction de malloc personnalisée (car ca marche avec cudaMalloc mais pas malloc_1d_float_cuda)
 
-    // copy content of Xld to Xld_base_cuda
-    cudaError_t cudaMemcpyResult = cudaMemcpy(thing->Xld_base_cuda, as_float_1d(Xld, N, Mld), N*Mld*sizeof(float), cudaMemcpyHostToDevice);
-    if(cudaMemcpyResult != cudaSuccess){
-        printf("ERROR: Failed to copy Xld to Xld_base_cuda. Error code: %s\n", cudaGetErrorString(cudaMemcpyResult));
-        die();
-    }
-    
-    // check that the copy was successful
-    float* Xld_base_cpu = malloc_float(N, Mld);
-    cudaMemcpy(Xld_base_cpu, thing->Xld_base_cuda, N*Mld*sizeof(float), cudaMemcpyDeviceToHost);
+    memcpy_CPU_to_CUDA_float(thing->Xld_base_cuda, as_float_1d(Xld, N, Mld), N*Mld);
+    memcpy_CPU_to_CUDA_float(thing->Xld_nesterov_cuda, as_float_1d(Xld, N, Mld), N*Mld);
+    memcpy_CPU_to_CUDA_float(thing->momenta_attraction_cuda, as_float_1d(Xld, N, Mld), N*Mld);
+    memcpy_CPU_to_CUDA_float(thing->momenta_repulsion_far_cuda, as_float_1d(Xld, N, Mld), N*Mld);
+    memcpy_CPU_to_CUDA_float(thing->momenta_repulsion_cuda, as_float_1d(Xld, N, Mld), N*Mld);
+    memcpy_CPU_to_CUDA_uint32(thing->neighsLD_cuda, as_uint32_1d(neighsLD, N, Kld), N*Kld);
+    memcpy_CPU_to_CUDA_uint32(thing->neighsHD_cuda, as_uint32_1d(neighsHD, N, Khd), N*Khd);
+    memcpy_CPU_to_CUDA_float(thing->furthest_neighdists_LD_cuda, furthest_neighdists_LD, N);
+    memcpy_CPU_to_CUDA_float(thing->P_cuda, as_float_1d(P, N, Khd), N*Khd);
+    float one = 1.0f;
+    memcpy_CPU_to_CUDA_float(thing->Qdenom_cuda, &one, 1u);
+   
+    // verify that neighsLD are well copied
+    uint32_t* neighsLD_test = malloc_uint32_t(N*Kld, 0u);
+    memcpy_CUDA_to_CPU_uint32(neighsLD_test, thing->neighsLD_cuda, N*Kld);
     for(uint32_t i=0; i<N; i++){
-        for(uint32_t j=0; j<Mld; j++){
-            if(Xld_base_cpu[i*Mld + j] != Xld[i][j]){
-                printf("ERROR: Xld_base_cuda[%d][%d] = %f != Xld[%d][%d] = %f\n", i, j, Xld_base_cpu[i*Mld + j], i, j, Xld[i][j]);
-            }
+        for(uint32_t j=0; j<Kld; j++){
+            if(neighsLD_test[i*Kld + j] != neighsLD[i][j]){
+                dying_breath("neighsLD not well copied to GPU");}
         }
     }
-    set_console_colour(230, 100, 190);
-    printf("good copy of Xld to Xld_base_cuda\n");
-    dying_breath("OK GOOD");
-    
-    die();
-    /*
-    // things on GPU
-    float*          Xld_base_cuda;     // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data
-    float*          Xld_nesterov_cuda; // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data
-    float*          momenta_attraction_cuda;   // will be on GPU as a 1d-array, use momenta_attraction[N] to access the 1d data
-    float*          momenta_repulsion_far_cuda;  // this will leak to neighbours 
-    float*          momenta_repulsion_cuda; 
-    uint32_t*       neighsLD_cuda;
-    uint32_t*       neighsHD_cuda;
-    float*          furthest_neighdists_LD_cuda;
-    float*          P_cuda; 
-    float*          Qdenom_cuda;
-    */
-
+    dying_breath("neighsLD well copied to GPU");
 }
 
 // depending on the (user-determined) use of GPU vs CPU, this initialises the appropriate struct
@@ -118,6 +110,8 @@ void new_EmbeddingMaker(EmbeddingMaker* thing, uint32_t N, uint32_t Mld, uint32_
 
 // this function sends the Xld and furthest_neighdists_LD towards the CPU, in an UNSAFE manner
 /* static void send_Xld_and_furthest_neighdists_LD_to_CPU(EmbeddingMaker_GPU* thing){
+    non: ici utiliser mes fonctions utilistaire de memcpy (elles checkent le error code et sanitize)
+    par exemple cette fonction : memcpy_CPU_to_CUDA_uint32()
     // Xld: GPU to CPU
     cudaMemcpy(as_float_1d(thing->Xld_cpu, thing->N, thing->Mld), thing->Xld_base_cuda, thing->N*thing->Mld*sizeof(float), cudaMemcpyDeviceToHost);
     // furthest_neighdists_LD: GPU to CPU

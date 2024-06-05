@@ -459,6 +459,38 @@ void malloc_1d_uint32_cuda(uint32_t** ptr_array, uint32_t n_elements){
     }
 }
 
+void memcpy_CPU_to_CUDA_float(float* ptr_array_GPU, float* ptr_array_CPU, uint32_t n_elements){
+    cudaError_t cuda_error = cudaMemcpy(ptr_array_GPU, ptr_array_CPU, n_elements * sizeof(float), cudaMemcpyHostToDevice);
+    if (cuda_error != cudaSuccess) {
+        printf("error: %s\n", cudaGetErrorString(cuda_error));
+        dying_breath("Failed to copy memory from CPU to GPU");
+    }
+}
+
+void memcpy_CPU_to_CUDA_uint32(uint32_t* ptr_array_GPU, uint32_t* ptr_array_CPU, uint32_t n_elements){
+    cudaError_t cuda_error = cudaMemcpy(ptr_array_GPU, ptr_array_CPU, n_elements * sizeof(uint32_t), cudaMemcpyHostToDevice);
+    if (cuda_error != cudaSuccess) {
+        printf("error: %s\n", cudaGetErrorString(cuda_error));
+        dying_breath("Failed to copy memory from CPU to GPU");
+    }
+}
+
+void memcpy_CUDA_to_CPU_float(float* ptr_array_CPU, float* ptr_array_GPU, uint32_t n_elements){
+    cudaError_t cuda_error = cudaMemcpy(ptr_array_CPU, ptr_array_GPU, n_elements * sizeof(float), cudaMemcpyDeviceToHost);
+    if (cuda_error != cudaSuccess) {
+        printf("error: %s\n", cudaGetErrorString(cuda_error));
+        dying_breath("Failed to copy memory from GPU to CPU");
+    }
+}
+
+void memcpy_CUDA_to_CPU_uint32(uint32_t* ptr_array_CPU, uint32_t* ptr_array_GPU, uint32_t n_elements){
+    cudaError_t cuda_error = cudaMemcpy(ptr_array_CPU, ptr_array_GPU, n_elements * sizeof(uint32_t), cudaMemcpyDeviceToHost);
+    if (cuda_error != cudaSuccess) {
+        printf("error: %s\n", cudaGetErrorString(cuda_error));
+        dying_breath("Failed to copy memory from GPU to CPU");
+    }
+}
+
 /***
  *       ____ _   _ ____    _           ____ ____  _   _   ______ ____  _   _                                     
  *      / ___| | | |  _ \  / \     _   / ___|  _ \| | | | / / ___|  _ \| | | |   ___ ___  _ __ ___  _ __ ___  ___ 
