@@ -40,8 +40,8 @@
 #define TERMINAL_TEXT_COLOUR_B 20
 // a set of 3 uint8_t values representing error terminal text colour
 #define TERMINAL_ERROR_COLOUR_R 255
-#define TERMINAL_ERROR_COLOUR_G 80
-#define TERMINAL_ERROR_COLOUR_B 20
+#define TERMINAL_ERROR_COLOUR_G 130
+#define TERMINAL_ERROR_COLOUR_B 220
 // a set of 3 uint8_t values representing success terminal text colour
 #define TERMINAL_SUCCESS_COLOUR_R 80
 #define TERMINAL_SUCCESS_COLOUR_G 255

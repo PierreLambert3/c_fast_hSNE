@@ -100,6 +100,12 @@ void NeighLDDiscoverer_perhaps_sync_with_GPU(NeighLDDiscoverer* thing){
         return;}
     // check if the GPU is requesting a sync, and that the previous sync signal has been assimilated
     GPU_CPU_sync* sync = &thing->GPU_CPU_comms_neighsLD->sync;
+    bool is_requesting = is_requesting_now(sync);
+    bool is_ready      = is_ready_now(sync);
+
+    printf("\n\nis_requesting: %d, is_ready: %d\n\n", is_requesting, is_ready);
+
+
     if(is_requesting_now(sync) && !is_ready_now(sync)){
         // wait for the subthreads to finish
         wait_full_path_finished(thing);

@@ -258,7 +258,7 @@ void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
 void manage_frame_rate(GuiManager* thing, uint32_t elapsed_time, uint32_t target_frame_time) {
     // if point drawing too slow: draw points once every three frames
     if (elapsed_time < target_frame_time) {
-        printf("sleep for %d\n", target_frame_time - elapsed_time);
+        // printf("sleep for %d\n", target_frame_time - elapsed_time);
         SDL_Delay(target_frame_time - elapsed_time);
     }
     else{

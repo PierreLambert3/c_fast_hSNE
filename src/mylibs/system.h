@@ -15,6 +15,7 @@
 void dying_breath(const char* message);
 void die();
 void sleep_ms(uint32_t n_ms);
+double time_seconds();
 
 /***
  *                   _                   _        __      
