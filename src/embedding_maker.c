@@ -139,23 +139,19 @@ static void receive_neighs_and_P_from_CPU(EmbeddingMaker_GPU* thing){
     // 1) neighsLD: CPU to GPU.
     GPU_CPU_sync* sync_neigh_LD = &thing->GPU_CPU_comms_neighsLD->sync;
 
-    bool is_ready = is_ready_now(sync_neigh_LD);
-    bool is_requesting = is_requesting_now(sync_neigh_LD);
-    printf("\n\n(GPU)   is_ready: %d, is_requesting: %d\n\n", is_ready, is_requesting);
-
     if(is_ready_now(sync_neigh_LD)){
         pthread_mutex_lock(sync_neigh_LD->mutex_buffer);
         memcpy_CPU_to_CUDA_uint32(thing->neighsLD_cuda, thing->GPU_CPU_comms_neighsLD->buffer, thing->N*thing->Kld);
         // cudaMemcpy(thing->neighsLD_cuda, thing->GPU_CPU_comms_neighsLD->buffer, thing->N*thing->Kld*sizeof(uint32_t), cudaMemcpyHostToDevice);
         pthread_mutex_unlock(sync_neigh_LD->mutex_buffer);
         set_ready(sync_neigh_LD, false);
-        printf("\n\n---------------  neighsLD received from CPU\n\n");
+        // printf("\n\n---------------  neighsLD received from CPU\n\n");
+        die();
     }
     if(!is_requesting_now(sync_neigh_LD)){
         notify_request(sync_neigh_LD);
-        printf("\n\n-----------------  neighsLD requested by GPU\n\n");
+        // printf("\n\n-----------------  neighsLD requested by GPU  is_requesting_now : %d\n\n", is_requesting_now(sync_neigh_LD));
     } // request for the next sync
-
 
 
 
@@ -203,8 +199,7 @@ Description of the periodic exchanges with other threads:
 void* routine_EmbeddingMaker_GPU(void* arg){
     EmbeddingMaker_GPU* thing = (EmbeddingMaker_GPU*) arg;
     thing->is_running = true;
-
-    double start_time, current_time; // convert to seconds
+    double start_time, current_time;
     start_time = time_seconds();
     while(thing->is_running){
         // ~~~~~~~~~~ gradient descent ~~~~~~~~~~
@@ -218,53 +213,22 @@ void* routine_EmbeddingMaker_GPU(void* arg){
         // ...
 
 
-todo: je pense que synchro n est pas ok : trouver ou ca bloque
-trouver pk % change ne change pas, meme en bloquant ca devrait changer....
+/* todo: je pense que synchro n est pas ok : trouver ou ca bloque
+trouver pk % change ne change pas, meme en bloquant ca devrait changer.... */
 
         // ~~~~~~~~~~ sync with CPU workers ~~~~~~~~~~
         // 1) "UNSAFE" syncs (only 1 writer so it's okay)
-        send_Xld_and_furthest_neighdists_LD_to_CPU(thing);
+        // send_Xld_and_furthest_neighdists_LD_to_CPU(thing);
         // 2) SAFE syncs, periodically
-        current_time = time_seconds();
-        double time_elapsed = (current_time - start_time);
-
-        printf("time_elapsed : %lf    start : %lf    current_time %lf\n", time_elapsed, start_time, current_time);    
+        double time_elapsed = (time_seconds() - start_time);
         if(time_elapsed > GUI_CPU_SYNC_PERIOD){
             receive_neighs_and_P_from_CPU(thing);
             start_time = time_seconds();
+            // printf("elspase: %lf    current_time %lf\n", time_elapsed, current_time);
         }
         // pour le moment, ^ en commentaires car je fais des cudaMemcpy mais Cda n est pas encore initialisé donc segfault
         // printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
     }
-
-
-    /* clock_t start_time, current_time; // convert to seconds
-    start_time = clock() / CLOCKS_PER_SEC;
-    while(thing->is_running){
-        // ~~~~~~~~~~ gradient descent ~~~~~~~~~~
-        // gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion
-        // ...
-
-        // momentum leak: momenta_repulsion_far gets smoothed across neighbours (with conservation of vector norm)
-        // ...
-
-        // apply momenta to Xld, regenerate Xld_nesterov, decay momenta
-        // ...
-
-        // ~~~~~~~~~~ sync with CPU workers ~~~~~~~~~~
-        // 1) "UNSAFE" syncs (only 1 writer so it's okay)
-        send_Xld_and_furthest_neighdists_LD_to_CPU(thing);
-        // 2) SAFE syncs, periodically
-        current_time = clock() / CLOCKS_PER_SEC;
-        double time_elapsed = (double) (current_time - start_time);
-        printf("time_elapsed : %lf    start : %lf    current_time %lf\n", time_elapsed, (double) start_time, (double) current_time);    
-        if(time_elapsed > GUI_CPU_SYNC_PERIOD){
-            receive_neighs_and_P_from_CPU(thing);
-            start_time = clock();
-        }
-        // pour le moment, ^ en commentaires car je fais des cudaMemcpy mais Cda n est pas encore initialisé donc segfault
-        // printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
-    } */
     return NULL; 
 }
 

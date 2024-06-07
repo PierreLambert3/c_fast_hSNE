@@ -76,47 +76,8 @@ void destroy_NeighLDDiscoverer(NeighLDDiscoverer* thing){
     free(thing);
 }
 
-static void wait_full_path_finished(NeighLDDiscoverer* thing){
-    // check each subthread and sleep 1pct of a second untill all are waiting for a task
-    bool all_idle = false;
-    while(!all_idle){
-        all_idle = true;
-        for(uint32_t i = 0u; i < thing->N_reserved_subthreads; i++){
-            pthread_mutex_lock(&thing->subthreads_mutexes[i]);
-            if(!thing->threads_waiting_for_task[i]){
-                all_idle = false;
-            }
-            pthread_mutex_unlock(&thing->subthreads_mutexes[i]);
-        }
-        if(all_idle){
-            sleep_ms(10); // 10 ms (1% of a second)
-        }
-    }
-}
-
-// carefull, not really safe of multiple threads call this (here only one thread so it's ok)
-void NeighLDDiscoverer_perhaps_sync_with_GPU(NeighLDDiscoverer* thing){
-    if(!USE_GPU){
-        return;}
-    // check if the GPU is requesting a sync, and that the previous sync signal has been assimilated
-    GPU_CPU_sync* sync = &thing->GPU_CPU_comms_neighsLD->sync;
-    bool is_requesting = is_requesting_now(sync);
-    bool is_ready      = is_ready_now(sync);
-
-    printf("\n\nis_requesting: %d, is_ready: %d\n\n", is_requesting, is_ready);
 
 
-    if(is_requesting_now(sync) && !is_ready_now(sync)){
-        // wait for the subthreads to finish
-        wait_full_path_finished(thing);
-        // copy the neighsLD to the buffer, safely
-        pthread_mutex_lock(thing->GPU_CPU_comms_neighsLD->sync.mutex_buffer);
-        memcpy(thing->GPU_CPU_comms_neighsLD->buffer, as_uint32_1d(thing->neighsLD, thing->N, thing->Kld), thing->N*thing->Kld*sizeof(uint32_t));
-        pthread_mutex_unlock(thing->GPU_CPU_comms_neighsLD->sync.mutex_buffer);
-        // notify the GPU that the data is ready
-        notify_ready(sync);
-    }
-}
 
 bool attempt_to_add_LD_neighbour(uint32_t i, uint32_t j, float euclsq_ij, SubthreadData* thing){
     // 1: can trust dists in LD : recompute all dists to find the 2 furthest neighbours
@@ -606,6 +567,54 @@ void* subroutine_NeighLDDiscoverer(void* arg){
     return NULL;
 }
 
+static void wait_full_path_finished(NeighLDDiscoverer* thing){
+    // check each subthread and sleep 1pct of a second untill all are waiting for a task
+    bool all_idle = false;
+    while(!all_idle){
+        printf("waiting...\n    ")  ;
+        all_idle = true;
+        for(uint32_t i = 0u; i < thing->N_reserved_subthreads; i++){
+            pthread_mutex_lock(&thing->subthreads_mutexes[i]);
+            if(!thing->threads_waiting_for_task[i]){
+                all_idle = false;
+            }
+            pthread_mutex_unlock(&thing->subthreads_mutexes[i]);
+        }
+        if(all_idle){
+            sleep_ms(10); // 10 ms (1% of a second)
+        }
+    }
+}
+
+// carefull, not really safe of multiple threads call this (here only one thread so it's ok)
+void NeighLDDiscoverer_perhaps_sync_with_GPU(NeighLDDiscoverer* thing){
+    if(!USE_GPU){
+        return;}
+    // check if the GPU is requesting a sync, and that the previous sync signal has been assimilated
+    GPU_CPU_sync* sync = &thing->GPU_CPU_comms_neighsLD->sync;
+    bool is_requesting = is_requesting_now(sync);
+    bool is_ready      = is_ready_now(sync);
+
+    printf("\n\nis_requesting: %d, is_ready: %d\n\n", is_requesting, is_ready);
+
+
+    if(is_requesting_now(sync) && !is_ready_now(sync)){
+        printf("mark 0\n");
+        // wait for the subthreads to finish
+        wait_full_path_finished(thing);
+        printf("mark 1\n");
+        // copy the neighsLD to the buffer, safely
+        pthread_mutex_lock(thing->GPU_CPU_comms_neighsLD->sync.mutex_buffer);
+        memcpy(thing->GPU_CPU_comms_neighsLD->buffer, as_uint32_1d(thing->neighsLD, thing->N, thing->Kld), thing->N*thing->Kld*sizeof(uint32_t));
+        pthread_mutex_unlock(thing->GPU_CPU_comms_neighsLD->sync.mutex_buffer);
+        printf("mark 2\n");
+        // notify the GPU that the data is ready
+        notify_ready(sync);
+        printf("mark 3\n");
+    }
+    printf("done\n");
+}
+
 void* routine_NeighLDDiscoverer(void* arg){
     NeighLDDiscoverer* thing = (NeighLDDiscoverer*)arg;
     thing->isRunning = true;
@@ -644,13 +653,16 @@ void* routine_NeighLDDiscoverer(void* arg){
                 thing->subthread_data[i].R = cursor + thing->subthreads_chunck_size > thing->N ? thing->N : cursor + thing->subthreads_chunck_size;
                 thing->threads_waiting_for_task[i] = false;
                 // 3: update the cursor in N for the next subthread
+                pthread_mutex_unlock(&thing->subthreads_mutexes[i]);  j avais un deadlock: je crois que c est réglé maintenant
                 cursor += thing->subthreads_chunck_size;
                 if(cursor >= thing->N){
                     cursor = 0;
                     NeighLDDiscoverer_perhaps_sync_with_GPU(thing);
                 }
             }
-            pthread_mutex_unlock(&thing->subthreads_mutexes[i]);
+            else{
+                pthread_mutex_unlock(&thing->subthreads_mutexes[i]);
+            }
         } 
         sleep_ms(10);
         // printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
