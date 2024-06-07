@@ -571,7 +571,6 @@ static void wait_full_path_finished(NeighLDDiscoverer* thing){
     // check each subthread and sleep 1pct of a second untill all are waiting for a task
     bool all_idle = false;
     while(!all_idle){
-        printf("waiting...\n    ")  ;
         all_idle = true;
         for(uint32_t i = 0u; i < thing->N_reserved_subthreads; i++){
             pthread_mutex_lock(&thing->subthreads_mutexes[i]);
@@ -592,27 +591,16 @@ void NeighLDDiscoverer_perhaps_sync_with_GPU(NeighLDDiscoverer* thing){
         return;}
     // check if the GPU is requesting a sync, and that the previous sync signal has been assimilated
     GPU_CPU_sync* sync = &thing->GPU_CPU_comms_neighsLD->sync;
-    bool is_requesting = is_requesting_now(sync);
-    bool is_ready      = is_ready_now(sync);
-
-    printf("\n\nis_requesting: %d, is_ready: %d\n\n", is_requesting, is_ready);
-
-
     if(is_requesting_now(sync) && !is_ready_now(sync)){
-        printf("mark 0\n");
         // wait for the subthreads to finish
         wait_full_path_finished(thing);
-        printf("mark 1\n");
         // copy the neighsLD to the buffer, safely
         pthread_mutex_lock(thing->GPU_CPU_comms_neighsLD->sync.mutex_buffer);
         memcpy(thing->GPU_CPU_comms_neighsLD->buffer, as_uint32_1d(thing->neighsLD, thing->N, thing->Kld), thing->N*thing->Kld*sizeof(uint32_t));
         pthread_mutex_unlock(thing->GPU_CPU_comms_neighsLD->sync.mutex_buffer);
-        printf("mark 2\n");
         // notify the GPU that the data is ready
         notify_ready(sync);
-        printf("mark 3\n");
     }
-    printf("done\n");
 }
 
 void* routine_NeighLDDiscoverer(void* arg){
@@ -652,8 +640,8 @@ void* routine_NeighLDDiscoverer(void* arg){
                 thing->subthread_data[i].L = cursor;
                 thing->subthread_data[i].R = cursor + thing->subthreads_chunck_size > thing->N ? thing->N : cursor + thing->subthreads_chunck_size;
                 thing->threads_waiting_for_task[i] = false;
+                pthread_mutex_unlock(&thing->subthreads_mutexes[i]);
                 // 3: update the cursor in N for the next subthread
-                pthread_mutex_unlock(&thing->subthreads_mutexes[i]);  j avais un deadlock: je crois que c est réglé maintenant
                 cursor += thing->subthreads_chunck_size;
                 if(cursor >= thing->N){
                     cursor = 0;

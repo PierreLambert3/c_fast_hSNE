@@ -121,12 +121,6 @@ void new_EmbeddingMaker(EmbeddingMaker* thing, uint32_t N, uint32_t Mld, uint32_
 
 // this function sends the Xld and furthest_neighdists_LD towards the CPU, in an UNSAFE manner
 static void send_Xld_and_furthest_neighdists_LD_to_CPU(EmbeddingMaker_GPU* thing){
-    /* // add random noise to Xld
-    for(uint32_t i = 0; i < thing->N; i++){
-        for(uint32_t j = 0; j < thing->Mld; j++){
-            thing->Xld_cpu[i][j] = thing->Xld_cpu[i][j] + 0.01f * (float) rand_r(&thing->rand_state) / (float) RAND_MAX;
-        }
-    } */
     // Xld: GPU to CPU
     memcpy_CUDA_to_CPU_float(as_float_1d(thing->Xld_cpu, thing->N, thing->Mld), thing->Xld_base_cuda, thing->N*thing->Mld);
     // furthest_neighdists_LD: GPU to CPU
@@ -145,18 +139,15 @@ static void receive_neighs_and_P_from_CPU(EmbeddingMaker_GPU* thing){
         // cudaMemcpy(thing->neighsLD_cuda, thing->GPU_CPU_comms_neighsLD->buffer, thing->N*thing->Kld*sizeof(uint32_t), cudaMemcpyHostToDevice);
         pthread_mutex_unlock(sync_neigh_LD->mutex_buffer);
         set_ready(sync_neigh_LD, false);
-        // printf("\n\n---------------  neighsLD received from CPU\n\n");
-        die();
     }
     if(!is_requesting_now(sync_neigh_LD)){
         notify_request(sync_neigh_LD);
-        // printf("\n\n-----------------  neighsLD requested by GPU  is_requesting_now : %d\n\n", is_requesting_now(sync_neigh_LD));
     } // request for the next sync
 
 
 
     // 2) neighsHD: CPU to GPU.
-    /* GPU_CPU_sync* sync_neigh_HD = &thing->GPU_CPU_comms_neighsHD->sync;
+    GPU_CPU_sync* sync_neigh_HD = &thing->GPU_CPU_comms_neighsHD->sync;
     if(is_ready_now(sync_neigh_HD)){
         pthread_mutex_lock(sync_neigh_HD->mutex_buffer);
         memcpy_CPU_to_CUDA_uint32(thing->neighsHD_cuda, thing->GPU_CPU_comms_neighsHD->buffer, thing->N*thing->Khd);
@@ -177,7 +168,7 @@ static void receive_neighs_and_P_from_CPU(EmbeddingMaker_GPU* thing){
         set_ready(sync_P, false);
     }
     if(!is_requesting_now(sync_P)){
-        notify_request(sync_P);} */
+        notify_request(sync_P);}
 }
 
 
@@ -212,21 +203,15 @@ void* routine_EmbeddingMaker_GPU(void* arg){
         // apply momenta to Xld, regenerate Xld_nesterov, decay momenta
         // ...
 
-
-/* todo: je pense que synchro n est pas ok : trouver ou ca bloque
-trouver pk % change ne change pas, meme en bloquant ca devrait changer.... */
-
         // ~~~~~~~~~~ sync with CPU workers ~~~~~~~~~~
         // 1) "UNSAFE" syncs (only 1 writer so it's okay)
-        // send_Xld_and_furthest_neighdists_LD_to_CPU(thing);
+        send_Xld_and_furthest_neighdists_LD_to_CPU(thing);
         // 2) SAFE syncs, periodically
         double time_elapsed = (time_seconds() - start_time);
         if(time_elapsed > GUI_CPU_SYNC_PERIOD){
             receive_neighs_and_P_from_CPU(thing);
             start_time = time_seconds();
-            // printf("elspase: %lf    current_time %lf\n", time_elapsed, current_time);
         }
-        // pour le moment, ^ en commentaires car je fais des cudaMemcpy mais Cda n est pas encore initialisé donc segfault
         // printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
     }
     return NULL; 
