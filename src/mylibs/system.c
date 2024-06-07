@@ -21,8 +21,9 @@ void sleep_ms(uint32_t n_ms){
     usleep(n_ms * 1000);
 }
 
+// NOT USING clock() BECAUSE IT IS NOT THREAD SAFE (ffs)
 double time_seconds(){
-    return (double)clock() / CLOCKS_PER_SEC;
+    return (double)time(NULL);
 }
 
 
