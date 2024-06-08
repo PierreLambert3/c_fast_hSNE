@@ -437,13 +437,19 @@ struct cudaDeviceProp initialise_cuda(){
 }
 
 void print_cuda_device_info(struct cudaDeviceProp prop){
+    printf("  Device name: %s\n", prop.name);
     printf("  Compute capability: %d.%d\n", prop.major, prop.minor);
     printf("  Total global memory: %lu bytes\n", prop.totalGlobalMem);
     printf("  Maximum threads per block: %d\n", prop.maxThreadsPerBlock);
+    printf("  Max threads per multiprocessor: %d\n",prop.maxThreadsPerMultiProcessor);
+    printf("  Streaming Multiprocessor (SM) count: %d\n",prop.multiProcessorCount);
+    printf("  Warp size: %d\n",prop.warpSize);
+    printf("  Rough estimate of number of threads %d\n", prop.multiProcessorCount * prop.maxThreadsPerMultiProcessor);
     printf("  Maximum block dimensions: (%d, %d, %d)\n", prop.maxThreadsDim[0], prop.maxThreadsDim[1], prop.maxThreadsDim[2]);
     printf("  Maximum grid dimensions: (%d, %d, %d)\n", prop.maxGridSize[0], prop.maxGridSize[1], prop.maxGridSize[2]);
-    printf("  Memory clock rate: %d kHz\n", prop.memoryClockRate);
-    printf("  Memory bus width: %d bits\n", prop.memoryBusWidth);
+    printf("  Shared memory per block: %lu bytes   (float per shared memory: %lu)\n", prop.sharedMemPerBlock, prop.sharedMemPerBlock/sizeof(float));
+    // printf("  Memory clock rate: %d kHz\n", prop.memoryClockRate);
+    // printf("  Memory bus width: %d bits\n", prop.memoryBusWidth);
     printf("  Peak memory bandwidth: %f GB/s\n", 2.0 * prop.memoryClockRate * (prop.memoryBusWidth / 8) / 1.0e6);
 }
 

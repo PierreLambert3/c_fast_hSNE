@@ -7,6 +7,11 @@
 // determines if using the GPU or CPU for gradient computations
 #define USE_GPU true
 
+// prefetching distance for the GPU
+#define GPU_PREFETCH_DIST 12
+// padding for the shared memory in the GPU: such that (GPU_PREFETCH_DIST + GPU_PADDING) = (2^k + 1)
+#define GPU_PADDING 5 // manually set, or else it is not known at compile time
+
 // a global epsilon for floating points equal to 1e-16
 #define FLOAT_EPS 1e-12f
 

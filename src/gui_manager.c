@@ -71,24 +71,15 @@ void manage_events(SDL_Event* event, GuiManager* thing) {
                 dying_breath("SDL_KEYDOWN event");
             }
         }
-        // printf("event\n");
     }
-    // printf("  NO event\n");
 }
 
 void slava_ukraini(SDL_Renderer* renderer){
-    /* printf("\nA word from the developper:\nUkraine gave away its nuclear weapons to Russia in exchange for security guarantees after the fall of the soviet union, the details are specified in the Budapest Memorandum on Security Assurances of 1994. \
- Putin, the head of Russian federation, violated the agreement and started the full-scale invasion of Ukraine in 2022. \
- This attitude encourages the proliferation of nuclear weapons across the world, showing that without nuclear dissuasion, no country is safe against violent imperialistic regimes.\
-  Moreover, the Kremlin spits on the memory of the warriors of the allied forces of the 2nd world war, by comparing Kiev's government to a nazi regime.\
- Putin and his cronies must be stopped, in the name of human rights, free speech, and for honour.\
- Be aware that there are ways to help the Ukrainian cause through official and unofficial channels.\n\
-  Glory to Ukraine. All views are my own,\n \t Pierre Lambert"); */
-    printf("May invaders get what they deserve, swiftly and mercilessly.\n");
-    // draw the flag of Ukraine for 0.8 seconds
+    // printf("May invaders reap what they sow.\n");
+    // draw the flag of Ukraine for a bit
     double start_time = (double)SDL_GetTicks();
     double elapsed_time = 0.0;
-    while(elapsed_time < 800.0){
+    while(elapsed_time < 500.0){
         // draw the flag of Ukraine
         SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255);
         SDL_Rect rect1 = {0, 0, GUI_W, GUI_H/2};
