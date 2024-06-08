@@ -34,8 +34,6 @@ void test_speed_flt_vs_dbl_yes_cache_effects();
 // prints info on the hardware and software of the system
 void print_system_info();
 
-
-
 /***
  *                 _               _                                                                 _   
  *                | |             | |                                                               | |  
@@ -51,7 +49,6 @@ void set_console_colour(uint8_t r, uint8_t g, uint8_t b);
 void set_console_colour_error();
 void set_console_colour_success();
 void reset_console_colour();
-
 
 /***
  *                                               
@@ -89,11 +86,6 @@ void       memcpy_float_matrix(float** recipient, float** original, uint32_t n, 
 // free handlers for mallocs
 void       free_matrix(void** matrix, uint32_t n);
 void       free_array(void* array);
-
-
-
-
-
 
 /***
  *       ____ _   _ ____    _                                          _ 

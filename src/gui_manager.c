@@ -76,6 +76,35 @@ void manage_events(SDL_Event* event, GuiManager* thing) {
     // printf("  NO event\n");
 }
 
+void slava_ukraini(SDL_Renderer* renderer){
+    /* printf("\nA word from the developper:\nUkraine gave away its nuclear weapons to Russia in exchange for security guarantees after the fall of the soviet union, the details are specified in the Budapest Memorandum on Security Assurances of 1994. \
+ Putin, the head of Russian federation, violated the agreement and started the full-scale invasion of Ukraine in 2022. \
+ This attitude encourages the proliferation of nuclear weapons across the world, showing that without nuclear dissuasion, no country is safe against violent imperialistic regimes.\
+  Moreover, the Kremlin spits on the memory of the warriors of the allied forces of the 2nd world war, by comparing Kiev's government to a nazi regime.\
+ Putin and his cronies must be stopped, in the name of human rights, free speech, and for honour.\
+ Be aware that there are ways to help the Ukrainian cause through official and unofficial channels.\n\
+  Glory to Ukraine. All views are my own,\n \t Pierre Lambert"); */
+    printf("May invaders get what they deserve, swiftly and mercilessly.\n");
+    // draw the flag of Ukraine for 0.8 seconds
+    double start_time = (double)SDL_GetTicks();
+    double elapsed_time = 0.0;
+    while(elapsed_time < 800.0){
+        // draw the flag of Ukraine
+        SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255);
+        SDL_Rect rect1 = {0, 0, GUI_W, GUI_H/2};
+        SDL_RenderFillRect(renderer, &rect1);
+        SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+        SDL_Rect rect2 = {0, GUI_H/2, GUI_W, GUI_H/2};
+        SDL_RenderFillRect(renderer, &rect2);
+        // render the screen
+        SDL_RenderPresent(renderer);
+        // update the time
+        elapsed_time = (double)SDL_GetTicks() - start_time;
+    }
+    // clear screen in black
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderClear(renderer);
+}
 
 void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
 
@@ -253,8 +282,6 @@ void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
     SDL_RenderPresent(renderer);
 }
 
-
-
 void manage_frame_rate(GuiManager* thing, uint32_t elapsed_time, uint32_t target_frame_time) {
     // if point drawing too slow: draw points once every three frames
     if (elapsed_time < target_frame_time) {
@@ -307,6 +334,9 @@ int routine_GuiManager(void* arg) {
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
 
+    // death to Putin
+    slava_ukraini(renderer);
+
     // main loop
     const uint32_t target_frame_rate = 30; // in frames per second
     const uint32_t target_frame_time = 1000 / target_frame_rate; // in milliseconds
@@ -328,6 +358,8 @@ int routine_GuiManager(void* arg) {
     destroy_GuiManager(thing);
     return 0;
 }
+
+
 
 void start_thread_GuiManager(GuiManager* thing) {
     // launch worker threads

@@ -21,11 +21,10 @@ void sleep_ms(uint32_t n_ms){
     usleep(n_ms * 1000);
 }
 
-// NOT USING clock() BECAUSE IT IS NOT THREAD SAFE (ffs)
+// don't use clock(): clock measures CPU-time (the actual time as a ressource used by the CPU, taking into account parallelism and sleep(), for instance).
 double time_seconds(){
     return (double)time(NULL);
 }
-
 
 /***
  *                 _               _                                                                 _   

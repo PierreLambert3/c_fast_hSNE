@@ -26,6 +26,8 @@ typedef struct {
     pthread_mutex_t* mutexes_sizeN;
     float*           hparam_LDkernel_alpha; // shared with gui    
     pthread_mutex_t* mutex_hparam_LDkernel_alpha;
+    float*           hparam_repulsion_multiplier; // shared with gui    
+    pthread_mutex_t* mutex_hparam_repulsion_multiplier;
     float**          Xld_cpu;      // will be on CPU as a 2d-array
     uint32_t**       neighsLD_cpu;
     uint32_t**       neighsHD_cpu;
@@ -74,5 +76,9 @@ void  destroy_EmbeddingMaker(EmbeddingMaker* thing);
 void* routine_EmbeddingMaker_CPU(void* arg);
 void* routine_EmbeddingMaker_GPU(void* arg);
 void  start_thread_EmbeddingMaker(EmbeddingMaker* thing);
+
+void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing);
+void momenta_leak_GPU(EmbeddingMaker_GPU* thing);
+void apply_momenta_and_decay_GPU(EmbeddingMaker_GPU* thing);
 
 #endif // EMBEDDING_MAKER_H

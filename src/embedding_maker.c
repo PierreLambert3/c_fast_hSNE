@@ -22,6 +22,8 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
     thing->mutexes_sizeN = mutexes_sizeN;
     thing->hparam_LDkernel_alpha       = malloc_float(1, 1.0f);
     thing->mutex_hparam_LDkernel_alpha = mutex_allocate_and_init();
+    thing->hparam_repulsion_multiplier = malloc_float(1, 1.0f);
+    thing->mutex_hparam_repulsion_multiplier = mutex_allocate_and_init();
     thing->Xld_cpu = Xld;
     thing->neighsLD_cpu = neighsLD;
     thing->neighsHD_cpu = neighsHD;
@@ -51,7 +53,6 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
     malloc_1d_float_cuda(&thing->P_cuda, N*Khd);
     malloc_1d_float_cuda(&thing->Qdenom_cuda, 1);
 
-
     memcpy_CPU_to_CUDA_float(thing->Xld_base_cuda, as_float_1d(Xld, N, Mld), N*Mld);
     memcpy_CPU_to_CUDA_float(thing->Xld_nesterov_cuda, as_float_1d(Xld, N, Mld), N*Mld);
     memcpy_CPU_to_CUDA_float(thing->momenta_attraction_cuda, as_float_1d(Xld, N, Mld), N*Mld);
@@ -65,6 +66,30 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
     memcpy_CPU_to_CUDA_float(thing->Qdenom_cuda, &one, 1u);
 }
 
+// 1: gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion
+// 2: this also recomputes the furthest_neighdists_LD
+void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing){
+    // get the alpha hyperparameter, for the simplified Cauchy kernel
+    pthread_mutex_lock(thing->mutex_hparam_LDkernel_alpha);
+    float cauchy_alpha = thing->hparam_LDkernel_alpha[0];
+    pthread_mutex_unlock(thing->mutex_hparam_LDkernel_alpha);
+    
+    
+}
+
+// momentum leak: momenta_repulsion_far gets smoothed across neighbours (with conservation of vector norm)
+// momenta_repulsion_far_cuda gets leaked entirely to momenta_repulsion_cuda
+void momenta_leak_GPU(EmbeddingMaker_GPU* thing){
+
+}
+
+// apply momenta to Xld, regenerate Xld_nesterov, decay momenta
+void apply_momenta_and_decay_GPU(EmbeddingMaker_GPU* thing){
+    // get the repulsion multiplier hyperparameter
+    pthread_mutex_lock(thing->mutex_hparam_repulsion_multiplier);
+    float repulsion_multiplier = thing->hparam_repulsion_multiplier[0];
+    pthread_mutex_unlock(thing->mutex_hparam_repulsion_multiplier);
+}
 
 /* "
 __shared__ float v[PDIST* BLOCKDIMX];
@@ -84,7 +109,6 @@ for (int i = threadIdx.x, ctr = 0; i < imax; i += BLOCKDIMX, ctr++) {
     // More instructions using locvar, for example, transcendentals
 }
 " */
-
 
 // depending on the (user-determined) use of GPU vs CPU, this initialises the appropriate struct
 void new_EmbeddingMaker(EmbeddingMaker* thing, uint32_t N, uint32_t Mld, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
@@ -195,13 +219,13 @@ void* routine_EmbeddingMaker_GPU(void* arg){
     while(thing->is_running){
         // ~~~~~~~~~~ gradient descent ~~~~~~~~~~
         // gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion
-        // ...
+        fill_raw_momenta_GPU(thing);
 
         // momentum leak: momenta_repulsion_far gets smoothed across neighbours (with conservation of vector norm)
-        // ...
+        momenta_leak_GPU(thing);
 
         // apply momenta to Xld, regenerate Xld_nesterov, decay momenta
-        // ...
+        apply_momenta_and_decay_GPU(thing);
 
         // ~~~~~~~~~~ sync with CPU workers ~~~~~~~~~~
         // 1) "UNSAFE" syncs (only 1 writer so it's okay)
