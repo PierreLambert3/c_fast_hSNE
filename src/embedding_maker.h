@@ -39,9 +39,9 @@ typedef struct {
     GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsHD;
     GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsLD;
     GPU_CPU_float_buffer*  GPU_CPU_comms_P;
-    uint32_t        threads_per_block; qqsqsd
-    uint32_t        blocks_per_grid; qqsqsd
-    uint32_t        float_per_shared_memory; qqsqsd
+    uint32_t        threads_per_block_cpu;
+    uint32_t*       max_block_dimensions_cpu;
+    uint32_t*       max_grid_dimensions_cpu;
 
     // things on GPU
     float*          Xld_base_cuda;     // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data

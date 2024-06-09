@@ -39,6 +39,17 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
     thing->GPU_CPU_comms_neighsHD = GPU_CPU_comms_neighsHD;
     thing->GPU_CPU_comms_neighsLD = GPU_CPU_comms_neighsLD;
     thing->GPU_CPU_comms_P        = GPU_CPU_comms_P;
+    
+    // save info concerning the GPU architecture
+    thing->threads_per_block_cpu  = prop.maxThreadsPerBlock;
+    thing->max_block_dimensions_cpu   = malloc_uint32_t(3, 42u);
+    thing->max_grid_dimensions_cpu    = malloc_uint32_t(3, 42u);
+    thing->max_block_dimensions_cpu[0] = (uint32_t) prop.maxThreadsDim[0];
+    thing->max_block_dimensions_cpu[1] = (uint32_t) prop.maxThreadsDim[1];
+    thing->max_block_dimensions_cpu[2] = (uint32_t) prop.maxThreadsDim[2];
+    thing->max_grid_dimensions_cpu[0]  = (uint32_t) prop.maxGridSize[0];
+    thing->max_grid_dimensions_cpu[1]  = (uint32_t) prop.maxGridSize[1];
+    thing->max_grid_dimensions_cpu[2]  = (uint32_t) prop.maxGridSize[2];
 
     // things on GPU
     cudaError_t cuda_error;
@@ -53,15 +64,22 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
     malloc_1d_float_cuda(&thing->P_cuda, N*Khd);
     malloc_1d_float_cuda(&thing->Qdenom_cuda, 1);
 
+    // copy values from the arrays on the CPU
     memcpy_CPU_to_CUDA_float(thing->Xld_base_cuda, as_float_1d(Xld, N, Mld), N*Mld);
     memcpy_CPU_to_CUDA_float(thing->Xld_nesterov_cuda, as_float_1d(Xld, N, Mld), N*Mld);
-    memcpy_CPU_to_CUDA_float(thing->momenta_attraction_cuda, as_float_1d(Xld, N, Mld), N*Mld);
-    memcpy_CPU_to_CUDA_float(thing->momenta_repulsion_far_cuda, as_float_1d(Xld, N, Mld), N*Mld);
-    memcpy_CPU_to_CUDA_float(thing->momenta_repulsion_cuda, as_float_1d(Xld, N, Mld), N*Mld);
     memcpy_CPU_to_CUDA_uint32(thing->neighsLD_cuda, as_uint32_1d(neighsLD, N, Kld), N*Kld);
     memcpy_CPU_to_CUDA_uint32(thing->neighsHD_cuda, as_uint32_1d(neighsHD, N, Khd), N*Khd);
     memcpy_CPU_to_CUDA_float(thing->furthest_neighdists_LD_cuda, furthest_neighdists_LD, N);
     memcpy_CPU_to_CUDA_float(thing->P_cuda, as_float_1d(P, N, Khd), N*Khd);
+    // init to 0.0f all momenta
+    cudaError_t err1 = cudaMemset(thing->momenta_attraction_cuda, 0, N*Mld*sizeof(float));
+    cudaError_t err2 = cudaMemset(thing->momenta_repulsion_far_cuda, 0, N*Mld*sizeof(float));
+    cudaError_t err3 = cudaMemset(thing->momenta_repulsion_cuda, 0, N*Mld*sizeof(float));
+    if(err1 != cudaSuccess || err2 != cudaSuccess || err3 != cudaSuccess){
+        dying_breath("cudamemset error");
+    }
+    dying_breath("GOOD");
+    // init value for the denominator : 1.0f
     float one = 1.0f;
     memcpy_CPU_to_CUDA_float(thing->Qdenom_cuda, &one, 1u);
 }
@@ -76,6 +94,14 @@ void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing){
     
     // block size: en fonction de shared mem per block 
 
+
+ok solution trouvée: no loop du tout (pas de shared mem)
+
+utiliser atomicAdd pour updater les momenta 
+
+pour denom: a mona vis le plus simple est de remplir un array de taille N avec les valeurs de denom, et de faire un sum reduction sur ce array
+   
+
 }
 
 // momentum leak: momenta_repulsion_far gets smoothed across neighbours (with conservation of vector norm)
@@ -83,6 +109,9 @@ void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing){
 void momenta_leak_GPU(EmbeddingMaker_GPU* thing){
 
 }
+
+
+
 
 // apply momenta to Xld, regenerate Xld_nesterov, decay momenta
 void apply_momenta_and_decay_GPU(EmbeddingMaker_GPU* thing){
