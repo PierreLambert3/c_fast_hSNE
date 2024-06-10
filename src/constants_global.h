@@ -4,6 +4,15 @@
 #define CONSTANTS_GLOBAL_H
 #include "includes_global.h"
 
+/*
+
+TODO:
+refactor constans to declare them in the header file and define them in the source file
+as "const <type> constName = value"
+using define is very very stupid
+ */
+
+
 // determines if using the GPU or CPU for gradient computations
 #define USE_GPU true
 
@@ -11,6 +20,8 @@
 #define GPU_PREFETCH_DIST 12
 // padding for the shared memory in the GPU: such that (GPU_PREFETCH_DIST + GPU_PADDING) = (2^k + 1)
 #define GPU_PADDING 5 // manually set, or else it is not known at compile time
+// block size for the GPU (multiple of 32)
+#define GPU_BLOCK_SIZE_X 32*16
 
 // a global epsilon for floating points equal to 1e-16
 #define FLOAT_EPS 1e-12f
@@ -23,6 +34,8 @@
 
 // speed at which the Q denominator is updated
 #define ALPHA_QDENOM (0.95f + ((1.f - 0.95f) * (1.f - SUBTHREADS_CHUNK_SIZE_PCT)))
+
+#define NB_RANDOM_POINTS_FAR_REPULSION 36u
 
 // the number of random points randomly sampled during neighbour discovery, on all the dataset
 #define NEIGH_FAR_EXPLORATION_N_SAMPLES      142u

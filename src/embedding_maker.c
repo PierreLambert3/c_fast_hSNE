@@ -50,6 +50,27 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
     thing->max_grid_dimensions_cpu[0]  = (uint32_t) prop.maxGridSize[0];
     thing->max_grid_dimensions_cpu[1]  = (uint32_t) prop.maxGridSize[1];
     thing->max_grid_dimensions_cpu[2]  = (uint32_t) prop.maxGridSize[2];
+    uint32_t N_elements_of_Qdenom = N * (Khd + Kld + NB_RANDOM_POINTS_FAR_REPULSION);
+
+    uint32_t smem_Xld_n_floats = (1 + 3) * Mld; // (Xi and 3 Xi for neighs (LD+HD) and 1 random point)
+
+    thing->smem_N_floats_per_thread = 3 * Mld * 
+    NON ^
+
+    todo : je vais launch 3 kernels de maniere asynchrone (neighs HD, neigh LD, et random points )
+    ==> pourquoi 3 kernels? 
+        1/ retirer les if (car Khd != Kld != n_rand_points)
+        2/ plus facile pour gerer la taille des blocks (niveau utilisation de SMEM)
+        (utilise cuda streams pour async, cf copilot)
+
+    if(thing->max_block_dimensions_cpu[0] < GPU_BLOCK_SIZE_X){
+        set_console_colour(TERMINAL_ERROR_COLOUR_R, TERMINAL_ERROR_COLOUR_G, TERMINAL_ERROR_COLOUR_B);
+        printf("ERROR: the (hardware) GPU block size is too small for the current value of GPU_BLOCK_SIZE_X\n");
+        printf("SOLUTION:  modify the value of GPU_BLOCK_SIZE_X in the constants_global.h file\n");
+        printf("suggested value: a multiple of 32 that is smaller or equal to %u (which is the maximum allowed for your GPU)\n", thing->max_block_dimensions_cpu[0]);
+        die();
+    }
+
 
     // things on GPU
     cudaError_t cuda_error;
@@ -60,9 +81,15 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
     malloc_1d_float_cuda(&thing->momenta_repulsion_cuda, N*Mld);
     malloc_1d_uint32_cuda(&thing->neighsLD_cuda, N*Kld);
     malloc_1d_uint32_cuda(&thing->neighsHD_cuda, N*Khd);
+    malloc_1d_float_cuda(&thing->all_neighdists_LD_cuda, N*Kld); //nouveau
     malloc_1d_float_cuda(&thing->furthest_neighdists_LD_cuda, N);
+    malloc_1d_uint32_cuda(&thing->N_elements_of_Qdenom, 1);
+    malloc_1d_float_cuda(&thing->elements_of_Qdenom, N_elements_of_Qdenom);
     malloc_1d_float_cuda(&thing->P_cuda, N*Khd);
     malloc_1d_float_cuda(&thing->Qdenom_cuda, 1);
+
+
+// vecteur qui contient les elems de Qdenom?
 
     // copy values from the arrays on the CPU
     memcpy_CPU_to_CUDA_float(thing->Xld_base_cuda, as_float_1d(Xld, N, Mld), N*Mld);
@@ -71,14 +98,16 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
     memcpy_CPU_to_CUDA_uint32(thing->neighsHD_cuda, as_uint32_1d(neighsHD, N, Khd), N*Khd);
     memcpy_CPU_to_CUDA_float(thing->furthest_neighdists_LD_cuda, furthest_neighdists_LD, N);
     memcpy_CPU_to_CUDA_float(thing->P_cuda, as_float_1d(P, N, Khd), N*Khd);
+    memcpy_CPU_to_CUDA_uint32(thing->N_elements_of_Qdenom, &N_elements_of_Qdenom, 1);
     // init to 0.0f all momenta
     cudaError_t err1 = cudaMemset(thing->momenta_attraction_cuda, 0, N*Mld*sizeof(float));
     cudaError_t err2 = cudaMemset(thing->momenta_repulsion_far_cuda, 0, N*Mld*sizeof(float));
     cudaError_t err3 = cudaMemset(thing->momenta_repulsion_cuda, 0, N*Mld*sizeof(float));
-    if(err1 != cudaSuccess || err2 != cudaSuccess || err3 != cudaSuccess){
+    cudaError_t err4 = cudaMemset(thing->all_neighdists_LD_cuda, 0, N*Kld*sizeof(float));
+    if(err1 != cudaSuccess || err2 != cudaSuccess || err3 != cudaSuccess || err4 != cudaSuccess){
         dying_breath("cudamemset error");
     }
-    dying_breath("GOOD");
+
     // init value for the denominator : 1.0f
     float one = 1.0f;
     memcpy_CPU_to_CUDA_float(thing->Qdenom_cuda, &one, 1u);
@@ -91,8 +120,40 @@ void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing){
     pthread_mutex_lock(thing->mutex_hparam_LDkernel_alpha);
     float cauchy_alpha = thing->hparam_LDkernel_alpha[0];
     pthread_mutex_unlock(thing->mutex_hparam_LDkernel_alpha);
+
+    // each cuda thread will be responsible for a set (i, k) 
+    uint32_t K = NB_RANDOM_POINTS_FAR_REPULSION > thing->Khd ? NB_RANDOM_POINTS_FAR_REPULSION : thing->Khd;
+    K = K > thing->Kld ? K : thing->Kld;
+    uint32_t N = thing->N;
+
+    attention: utiliser smem_N_floats_per_thread pour calculer le block size
+
+    // block size: 1 dimensional
+    dim3 block_size  = { GPU_BLOCK_SIZE_X, 1, 1 };
+    
+    // shared memory constraint: in this case we don t use shared memory
+    
+    printf("block_size: %u\n", block_size.x);
+
+
+    // print the values of thing->max_block_dimensions_cpu and thing->max_grid_dimensions_cpu:
+    printf("max_block_dimensions_cpu: %u %u %u\n", thing->max_block_dimensions_cpu[0], thing->max_block_dimensions_cpu[1], thing->max_block_dimensions_cpu[2]);
+    printf("max_grid_dimensions_cpu: %u %u %u\n", thing->max_grid_dimensions_cpu[0], thing->max_grid_dimensions_cpu[1], thing->max_grid_dimensions_cpu[2]);
+    die();
+
+    // cf copilot pour les launch failures
     
     // block size: en fonction de shared mem per block 
+
+
+/* 
+thing->max_block_dimensions_cpu[0] = (uint32_t) prop.maxThreadsDim[0];
+    thing->max_block_dimensions_cpu[1] = (uint32_t) prop.maxThreadsDim[1];
+    thing->max_block_dimensions_cpu[2] = (uint32_t) prop.maxThreadsDim[2];
+    thing->max_grid_dimensions_cpu[0]  = (uint32_t) prop.maxGridSize[0];
+    thing->max_grid_dimensions_cpu[1]  = (uint32_t) prop.maxGridSize[1];
+    thing->max_grid_dimensions_cpu[2]  = (uint32_t) prop.maxGridSize[2];
+
 
 
 ok solution trouvée: no loop du tout (pas de shared mem)
@@ -100,7 +161,7 @@ ok solution trouvée: no loop du tout (pas de shared mem)
 utiliser atomicAdd pour updater les momenta 
 
 pour denom: a mona vis le plus simple est de remplir un array de taille N avec les valeurs de denom, et de faire un sum reduction sur ce array
-   
+    */
 
 }
 

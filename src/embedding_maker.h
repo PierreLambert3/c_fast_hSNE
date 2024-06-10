@@ -42,16 +42,20 @@ typedef struct {
     uint32_t        threads_per_block_cpu;
     uint32_t*       max_block_dimensions_cpu;
     uint32_t*       max_grid_dimensions_cpu;
+    uint32_t        smem_N_floats_per_thread;
 
     // things on GPU
     float*          Xld_base_cuda;     // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data
     float*          Xld_nesterov_cuda; // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data
     float*          momenta_attraction_cuda;   // will be on GPU as a 1d-array, use momenta_attraction[N] to access the 1d data
     float*          momenta_repulsion_far_cuda;  // this will leak to neighbours 
-    float*          momenta_repulsion_cuda; 
+    float*          momenta_repulsion_cuda;
     uint32_t*       neighsLD_cuda;
     uint32_t*       neighsHD_cuda;
+    float*          all_neighdists_LD_cuda; 
     float*          furthest_neighdists_LD_cuda;
+    uint32_t*       N_elements_of_Qdenom;
+    float*          elements_of_Qdenom; // will be on GPU as a 1d-array
     float*          P_cuda; 
     float*          Qdenom_cuda;
 } EmbeddingMaker_GPU;
