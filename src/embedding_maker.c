@@ -1,6 +1,9 @@
 #include "embedding_maker.h"
 
 
+
+
+
 void new_EmbeddingMaker_CPU(EmbeddingMaker_CPU* thing, uint32_t N, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
     float** Xld, uint32_t Khd, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD,\
     float** P, pthread_mutex_t* mutex_P){
@@ -26,7 +29,7 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     thing->neighsLD_cpu = neighsLD;
     thing->neighsHD_cpu = neighsHD;
     thing->furthest_neighdists_LD_cpu = furthest_neighdists_LD;
-    thing->P_cpu = P;
+    thing->Qdenom_EMA = 1.0f;
     thing->mutex_P = mutex_P;
 
     // initialise CUDA adn get device properties
@@ -38,23 +41,6 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     thing->GPU_CPU_comms_neighsLD = GPU_CPU_comms_neighsLD;
     thing->GPU_CPU_comms_P        = GPU_CPU_comms_P;
     
-    // save info concerning the GPU architecture
-    thing->max_block_dimensions_cpu   = malloc_uint32_t(3, 42u);
-    thing->max_grid_dimensions_cpu    = malloc_uint32_t(3, 42u);
-    thing->max_block_dimensions_cpu[0] = (uint32_t) prop.maxThreadsDim[0];
-    thing->max_block_dimensions_cpu[1] = (uint32_t) prop.maxThreadsDim[1];
-    thing->max_block_dimensions_cpu[2] = (uint32_t) prop.maxThreadsDim[2];
-    thing->max_grid_dimensions_cpu[0]  = (uint32_t) prop.maxGridSize[0];
-    thing->max_grid_dimensions_cpu[1]  = (uint32_t) prop.maxGridSize[1];
-    thing->max_grid_dimensions_cpu[2]  = (uint32_t) prop.maxGridSize[2];
-    thing->threads_per_block_cpu  = prop.maxThreadsPerBlock;
-    thing->smem_max_N_floats_per_block = prop.sharedMemPerBlock/sizeof(float);
-    thing->registers_max_N_floats_per_block = prop.regsPerBlock;
-
-    printf("nb floats for smem %u,   for registers: %u\n", thing->smem_max_N_floats_per_block, thing->registers_max_N_floats_per_block);
-    uint32_t N_elements_of_Qdenom = N * (Khd + Kld + NB_RANDOM_POINTS_FAR_REPULSION);
-    // register pour Xi et Xj 
-
     // things on GPU
     cudaError_t cuda_error;
     malloc_1d_float_cuda(&thing->Xld_base_cuda, N*Mld);
@@ -68,9 +54,9 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     malloc_1d_float_cuda(&thing->furthest_neighdists_LD_cuda, N);
     malloc_1d_uint32_cuda(&thing->N_elements_of_Qdenom_cuda, 1);
     malloc_1d_uint32_cuda(&thing->random_numbers_size_NxRand_cuda, N*NB_RANDOM_POINTS_FAR_REPULSION);
-    malloc_1d_float_cuda(&thing->elements_of_Qdenom_cuda, N_elements_of_Qdenom);
+    uint32_t N_elements_of_Qdenom = N * (Khd + Kld + NB_RANDOM_POINTS_FAR_REPULSION);
+    malloc_1d_double_cuda(&thing->elements_of_Qdenom_cuda, N_elements_of_Qdenom);
     malloc_1d_float_cuda(&thing->P_cuda, N*Khd);
-    malloc_1d_float_cuda(&thing->Qdenom_EMA_cuda, 1);
     malloc_1d_float_cuda(&thing->now_Qdenom_cuda, 1);
 
     // copy values from the arrays on the CPU
@@ -99,7 +85,43 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     // init value for the denominator : 1.0f
     float one = 1.0f;
     memcpy_CPU_to_CUDA_float(thing->now_Qdenom_cuda, &one, 1u);
-    memcpy_CPU_to_CUDA_float(thing->Qdenom_EMA_cuda, &one, 1u);
+
+/***
+ *     _   __                     _       _                           
+ *    | | / /                    | |     | |                          
+ *    | |/ /  ___ _ __ _ __   ___| |  ___| |__   __ _ _ __   ___  ___ 
+ *    |    \ / _ \ '__| '_ \ / _ \ | / __| '_ \ / _` | '_ \ / _ \/ __|
+ *    | |\  \  __/ |  | | | |  __/ | \__ \ | | | (_| | |_) |  __/\__ \
+ *    \_| \_/\___|_|  |_| |_|\___|_| |___/_| |_|\__,_| .__/ \___||___/
+ *                                                   | |              
+ *                                                   |_|              
+ */
+    uint32_t smem_max_N_floats_per_block      = prop.sharedMemPerBlock/sizeof(float);
+    uint32_t registers_max_N_floats_per_block = prop.regsPerBlock;
+    // target block size (1-dimensional)   (also check that it's indeed a multiple of 32)
+    uint32_t target_block_size = prop.maxThreadsDim[0] / 2;
+    if(target_block_size % 32 != 0){dying_breath("target block size is not a multiple of 32\n");}
+
+    // ~~~~~~~~~  Kernel 1: HD neighbours  ~~~~~~~~~
+   // number of threads in total 
+    uint32_t KernHD_n_threads_total = thing->N * thing->Khd;
+    // determine block size and number of blocks
+    uint32_t KernHD_n_blocks   = 0u;
+    uint32_t KernHD_block_size = target_block_size;
+    bool size_is_ok = false;
+    while(!size_is_ok){
+        KernHD_n_blocks = (KernHD_n_threads_total + KernHD_block_size - 1u) / KernHD_block_size;
+        uint32_t block_register_n_32bits = KernHD_block_size * (1u + 1u + 1u + (2u * Mld));
+        uint32_t block_smem_n_32bits     = 1u + 1u + KernHD_block_size * (2u + (4u * Mld));
+        bool smem_ok = block_smem_n_32bits     < smem_max_N_floats_per_block;
+        bool reg_ok  = block_register_n_32bits < registers_max_N_floats_per_block;
+        size_is_ok = smem_ok && reg_ok;
+        if(!size_is_ok){
+            KernHD_block_size = KernHD_block_size / 2u;
+        }
+    }
+    thing->Kern_HD_n_blocks   = KernHD_n_blocks;
+    thing->Kern_HD_block_size = KernHD_block_size;
 }
 
 // 1: gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion
@@ -110,36 +132,21 @@ void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing){
     float cauchy_alpha = thing->hparam_LDkernel_alpha[0];
     pthread_mutex_unlock(thing->mutex_hparam_LDkernel_alpha);
 
-    // Kld devrait etre une constante
+    // ~~~~~~~~~  Kernel 1: HD neighbours  ~~~~~~~~~
+    interactions_K_HD<<<thing->Kern_HD_n_blocks, thing->Kern_HD_block_size>>>(thing->N, thing->Khd, thing->P_cuda, thing->Xld_nesterov_cuda, thing->neighsHD_cuda, thing->furthest_neighdists_LD_cuda, thing->Qdenom_EMA, cauchy_alpha, thing->elements_of_Qdenom_cuda, thing->momenta_attraction_cuda, thing->momenta_repulsion_far_cuda);
+
+In general, it s a good practice to separate your CUDA code and C/C++ code into different files. You can compile your C/C++ code with gcc and your CUDA code with nvcc, and then link the resulting object files together.
+
+This way, you can take full advantage of the features of both compilers and avoid potential compatibility issues.
 
 
-    // block size: 1 dimensional
-    // dim3 block_size  = { GPU_BLOCK_SIZE_X, 1, 1 };
-    
-    // shared memory constraint: in this case we don t use shared memory
-    
-    /* printf("block_size: %u\n", block_size.x);
+CF la longue reponose de copilot pour les modifications (et pas oublier de creer un ficher .cu)
 
-
-    // print the values of thing->max_block_dimensions_cpu and thing->max_grid_dimensions_cpu:
-    printf("max_block_dimensions_cpu: %u %u %u\n", thing->max_block_dimensions_cpu[0], thing->max_block_dimensions_cpu[1], thing->max_block_dimensions_cpu[2]);
-    printf("max_grid_dimensions_cpu: %u %u %u\n", thing->max_grid_dimensions_cpu[0], thing->max_grid_dimensions_cpu[1], thing->max_grid_dimensions_cpu[2]);
-    die(); */
 
     // cf copilot pour les launch failures
     
-    // block size: en fonction de shared mem per block 
-
 
 /* 
-thing->max_block_dimensions_cpu[0] = (uint32_t) prop.maxThreadsDim[0];
-    thing->max_block_dimensions_cpu[1] = (uint32_t) prop.maxThreadsDim[1];
-    thing->max_block_dimensions_cpu[2] = (uint32_t) prop.maxThreadsDim[2];
-    thing->max_grid_dimensions_cpu[0]  = (uint32_t) prop.maxGridSize[0];
-    thing->max_grid_dimensions_cpu[1]  = (uint32_t) prop.maxGridSize[1];
-    thing->max_grid_dimensions_cpu[2]  = (uint32_t) prop.maxGridSize[2];
-
-
 
 ok solution trouvée: no loop du tout (pas de shared mem)
 

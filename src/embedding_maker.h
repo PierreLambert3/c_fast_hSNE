@@ -30,23 +30,20 @@ typedef struct {
     uint32_t**       neighsLD_cpu;
     uint32_t**       neighsHD_cpu;
     float*           furthest_neighdists_LD_cpu;
-    float**          P_cpu; 
+    float            Qdenom_EMA;
     pthread_mutex_t* mutex_P; // for when writing CPU<->GPU
 
     // safe GPU / CPU communication: neighsHD and Psym
     GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsHD;
     GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsLD;
     GPU_CPU_float_buffer*  GPU_CPU_comms_P;
-    uint32_t*       max_block_dimensions_cpu;
-    uint32_t*       max_grid_dimensions_cpu;
-    uint32_t        threads_per_block_cpu;
-    uint32_t        smem_max_N_floats_per_block;
-    uint32_t        registers_max_N_floats_per_block;
+    
 
     // GPU kernel, number of floats un shared memory per thread
-    uint32_t        kernelKhd_smem_Nflt_per_thread;
-    uint32_t        kernelKld_smem_Nflt_per_thread;
-    uint32_t        kernelRan_smem_Nflt_per_thread;
+    uint32_t Kern_HD_n_blocks;
+    uint32_t Kern_HD_block_size;
+
+
 
     // things on GPU
     float*          Xld_base_cuda;     // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data
@@ -60,9 +57,8 @@ typedef struct {
     float*          furthest_neighdists_LD_cuda;
     uint32_t*       N_elements_of_Qdenom_cuda;
     uint32_t*       random_numbers_size_NxRand_cuda;
-    float*          elements_of_Qdenom_cuda; // will be on GPU as a 1d-array
+    double*         elements_of_Qdenom_cuda; // will be on GPU as a 1d-array
     float*          P_cuda; 
-    float*          Qdenom_EMA_cuda;
     float*          now_Qdenom_cuda;
 } EmbeddingMaker_GPU;
 
@@ -71,7 +67,6 @@ typedef struct {
     EmbeddingMaker_CPU* maker_cpu;
     EmbeddingMaker_GPU* maker_gpu;
 } EmbeddingMaker;
-
 
 
 void  new_EmbeddingMaker(EmbeddingMaker* thing, uint32_t N, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
@@ -93,5 +88,8 @@ void  start_thread_EmbeddingMaker(EmbeddingMaker* thing);
 void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing);
 void momenta_leak_GPU(EmbeddingMaker_GPU* thing);
 void apply_momenta_and_decay_GPU(EmbeddingMaker_GPU* thing);
+
+// cuda kernels
+__global__ void interactions_K_HD(int N, int Khd, float* dvc_Pij, float* dvc_Xld_nester, uint32_t* dvc_neighsHD, float* furthest_neighdists_LD, float Qdenom_EMA, float alpha_cauchy, float* dvc_Qdenom_elements, float* dvc_momenta_attraction, float* dvc_momenta_repulsion);
 
 #endif // EMBEDDING_MAKER_H

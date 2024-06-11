@@ -454,6 +454,16 @@ void print_cuda_device_info(struct cudaDeviceProp prop){
     printf("  Peak memory bandwidth: %f GB/s\n", 2.0 * prop.memoryClockRate * (prop.memoryBusWidth / 8) / 1.0e6);
 }
 
+
+
+void malloc_1d_double_cuda(double** ptr_array, uint32_t n_elements){
+    cudaError_t cuda_error = cudaMalloc((void**)ptr_array, n_elements * sizeof(double));
+    if (cuda_error != cudaSuccess) {
+        printf("error: %s\n", cudaGetErrorString(cuda_error));
+        dying_breath("Failed to allocate memory on GPU");
+    }
+}
+
 void malloc_1d_float_cuda(float** ptr_array, uint32_t n_elements){
     cudaError_t cuda_error = cudaMalloc((void**)ptr_array, n_elements * sizeof(float));
     if (cuda_error != cudaSuccess) {
@@ -467,6 +477,22 @@ void malloc_1d_uint32_cuda(uint32_t** ptr_array, uint32_t n_elements){
     if (cuda_error != cudaSuccess) {
         printf("error: %s\n", cudaGetErrorString(cuda_error));
         dying_breath("Failed to allocate memory on GPU");
+    }
+}
+
+void memcpy_CPU_to_CUDA_double(double* ptr_array_GPU, double* ptr_array_CPU, uint32_t n_elements){
+    cudaError_t cuda_error = cudaMemcpy(ptr_array_GPU, ptr_array_CPU, n_elements * sizeof(double), cudaMemcpyHostToDevice);
+    if (cuda_error != cudaSuccess) {
+        printf("error: %s\n", cudaGetErrorString(cuda_error));
+        dying_breath("Failed to copy memory from CPU to GPU");
+    }
+}
+
+void memcpy_CUDA_to_CPU_double(double* ptr_array_CPU, double* ptr_array_GPU, uint32_t n_elements){
+    cudaError_t cuda_error = cudaMemcpy(ptr_array_CPU, ptr_array_GPU, n_elements * sizeof(double), cudaMemcpyDeviceToHost);
+    if (cuda_error != cudaSuccess) {
+        printf("error: %s\n", cudaGetErrorString(cuda_error));
+        dying_breath("Failed to copy memory from GPU to CPU");
     }
 }
 

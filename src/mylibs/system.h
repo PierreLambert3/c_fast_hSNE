@@ -105,6 +105,10 @@ void memcpy_CPU_to_CUDA_uint32(uint32_t* ptr_array_GPU, uint32_t* ptr_array_CPU,
 void memcpy_CUDA_to_CPU_float(float* ptr_array_CPU, float* ptr_array_GPU, uint32_t n_elements);
 void memcpy_CUDA_to_CPU_uint32(uint32_t* ptr_array_CPU, uint32_t* ptr_array_GPU, uint32_t n_elements);
 
+void malloc_1d_double_cuda(double** ptr_array_GPU, uint32_t n_elements);
+void memcpy_CUDA_to_CPU_double(double* ptr_array_CPU, double* ptr_array_GPU, uint32_t n_elements);
+void memcpy_CPU_to_CUDA_double(double* ptr_array_GPU, double* ptr_array_CPU, uint32_t n_elements);
+
 /***
  *       ____ _   _ ____    _           ____ ____  _   _   ______ ____  _   _                                     
  *      / ___| | | |  _ \  / \     _   / ___|  _ \| | | | / / ___|  _ \| | | |   ___ ___  _ __ ___  _ __ ___  ___ 
