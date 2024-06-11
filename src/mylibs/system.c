@@ -448,6 +448,7 @@ void print_cuda_device_info(struct cudaDeviceProp prop){
     printf("  Maximum block dimensions: (%d, %d, %d)\n", prop.maxThreadsDim[0], prop.maxThreadsDim[1], prop.maxThreadsDim[2]);
     printf("  Maximum grid dimensions: (%d, %d, %d)\n", prop.maxGridSize[0], prop.maxGridSize[1], prop.maxGridSize[2]);
     printf("  Shared memory per block: %lu bytes   (float per shared memory: %lu)\n", prop.sharedMemPerBlock, prop.sharedMemPerBlock/sizeof(float));
+    printf("Registers available per block: %d\n", prop.regsPerBlock);
     // printf("  Memory clock rate: %d kHz\n", prop.memoryClockRate);
     // printf("  Memory bus width: %d bits\n", prop.memoryBusWidth);
     printf("  Peak memory bandwidth: %f GB/s\n", 2.0 * prop.memoryClockRate * (prop.memoryBusWidth / 8) / 1.0e6);

@@ -1,14 +1,14 @@
 #include "embedding_maker.h"
 
 
-void new_EmbeddingMaker_CPU(EmbeddingMaker_CPU* thing, uint32_t N, uint32_t Mld, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
-    float** Xld, uint32_t Khd, uint32_t Kld, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD,\
+void new_EmbeddingMaker_CPU(EmbeddingMaker_CPU* thing, uint32_t N, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
+    float** Xld, uint32_t Khd, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD,\
     float** P, pthread_mutex_t* mutex_P){
     dying_breath("CPU-based embedding maker not implemented yet");
 }
 
-void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
-        float** Xld, uint32_t Khd, uint32_t Kld, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD,\
+void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
+        float** Xld, uint32_t Khd, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD,\
         float** P, pthread_mutex_t* mutex_P,\
     GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsHD, GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsLD, GPU_CPU_float_buffer* GPU_CPU_comms_P){
     thing->mutex_thread = mutex_allocate_and_init();
@@ -16,8 +16,6 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
     thing->is_running = false;
     thing->work_type = 0;
     thing->N = N;
-    thing->Mld = Mld;
-    thing->Kld = Kld;
     thing->Khd = Khd;
     thing->mutexes_sizeN = mutexes_sizeN;
     thing->hparam_LDkernel_alpha       = malloc_float(1, 1.0f);
@@ -41,7 +39,6 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
     thing->GPU_CPU_comms_P        = GPU_CPU_comms_P;
     
     // save info concerning the GPU architecture
-    thing->threads_per_block_cpu  = prop.maxThreadsPerBlock;
     thing->max_block_dimensions_cpu   = malloc_uint32_t(3, 42u);
     thing->max_grid_dimensions_cpu    = malloc_uint32_t(3, 42u);
     thing->max_block_dimensions_cpu[0] = (uint32_t) prop.maxThreadsDim[0];
@@ -50,27 +47,13 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
     thing->max_grid_dimensions_cpu[0]  = (uint32_t) prop.maxGridSize[0];
     thing->max_grid_dimensions_cpu[1]  = (uint32_t) prop.maxGridSize[1];
     thing->max_grid_dimensions_cpu[2]  = (uint32_t) prop.maxGridSize[2];
+    thing->threads_per_block_cpu  = prop.maxThreadsPerBlock;
+    thing->smem_max_N_floats_per_block = prop.sharedMemPerBlock/sizeof(float);
+    thing->registers_max_N_floats_per_block = prop.regsPerBlock;
+
+    printf("nb floats for smem %u,   for registers: %u\n", thing->smem_max_N_floats_per_block, thing->registers_max_N_floats_per_block);
     uint32_t N_elements_of_Qdenom = N * (Khd + Kld + NB_RANDOM_POINTS_FAR_REPULSION);
-
-    uint32_t smem_Xld_n_floats = (1 + 3) * Mld; // (Xi and 3 Xi for neighs (LD+HD) and 1 random point)
-
-    thing->smem_N_floats_per_thread = 3 * Mld * 
-    NON ^
-
-    todo : je vais launch 3 kernels de maniere asynchrone (neighs HD, neigh LD, et random points )
-    ==> pourquoi 3 kernels? 
-        1/ retirer les if (car Khd != Kld != n_rand_points)
-        2/ plus facile pour gerer la taille des blocks (niveau utilisation de SMEM)
-        (utilise cuda streams pour async, cf copilot)
-
-    if(thing->max_block_dimensions_cpu[0] < GPU_BLOCK_SIZE_X){
-        set_console_colour(TERMINAL_ERROR_COLOUR_R, TERMINAL_ERROR_COLOUR_G, TERMINAL_ERROR_COLOUR_B);
-        printf("ERROR: the (hardware) GPU block size is too small for the current value of GPU_BLOCK_SIZE_X\n");
-        printf("SOLUTION:  modify the value of GPU_BLOCK_SIZE_X in the constants_global.h file\n");
-        printf("suggested value: a multiple of 32 that is smaller or equal to %u (which is the maximum allowed for your GPU)\n", thing->max_block_dimensions_cpu[0]);
-        die();
-    }
-
+    // register pour Xi et Xj 
 
     // things on GPU
     cudaError_t cuda_error;
@@ -83,13 +66,12 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
     malloc_1d_uint32_cuda(&thing->neighsHD_cuda, N*Khd);
     malloc_1d_float_cuda(&thing->all_neighdists_LD_cuda, N*Kld); //nouveau
     malloc_1d_float_cuda(&thing->furthest_neighdists_LD_cuda, N);
-    malloc_1d_uint32_cuda(&thing->N_elements_of_Qdenom, 1);
-    malloc_1d_float_cuda(&thing->elements_of_Qdenom, N_elements_of_Qdenom);
+    malloc_1d_uint32_cuda(&thing->N_elements_of_Qdenom_cuda, 1);
+    malloc_1d_uint32_cuda(&thing->random_numbers_size_NxRand_cuda, N*NB_RANDOM_POINTS_FAR_REPULSION);
+    malloc_1d_float_cuda(&thing->elements_of_Qdenom_cuda, N_elements_of_Qdenom);
     malloc_1d_float_cuda(&thing->P_cuda, N*Khd);
-    malloc_1d_float_cuda(&thing->Qdenom_cuda, 1);
-
-
-// vecteur qui contient les elems de Qdenom?
+    malloc_1d_float_cuda(&thing->Qdenom_EMA_cuda, 1);
+    malloc_1d_float_cuda(&thing->now_Qdenom_cuda, 1);
 
     // copy values from the arrays on the CPU
     memcpy_CPU_to_CUDA_float(thing->Xld_base_cuda, as_float_1d(Xld, N, Mld), N*Mld);
@@ -98,7 +80,7 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
     memcpy_CPU_to_CUDA_uint32(thing->neighsHD_cuda, as_uint32_1d(neighsHD, N, Khd), N*Khd);
     memcpy_CPU_to_CUDA_float(thing->furthest_neighdists_LD_cuda, furthest_neighdists_LD, N);
     memcpy_CPU_to_CUDA_float(thing->P_cuda, as_float_1d(P, N, Khd), N*Khd);
-    memcpy_CPU_to_CUDA_uint32(thing->N_elements_of_Qdenom, &N_elements_of_Qdenom, 1);
+    memcpy_CPU_to_CUDA_uint32(thing->N_elements_of_Qdenom_cuda, &N_elements_of_Qdenom, 1);
     // init to 0.0f all momenta
     cudaError_t err1 = cudaMemset(thing->momenta_attraction_cuda, 0, N*Mld*sizeof(float));
     cudaError_t err2 = cudaMemset(thing->momenta_repulsion_far_cuda, 0, N*Mld*sizeof(float));
@@ -107,10 +89,17 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t Mld,
     if(err1 != cudaSuccess || err2 != cudaSuccess || err3 != cudaSuccess || err4 != cudaSuccess){
         dying_breath("cudamemset error");
     }
+    // fill thing->random_numbers_size_NxRand_cuda with random numbers inside [0, N[
+    uint32_t* random_numbers_size_NxRand = malloc_uint32_t(N*NB_RANDOM_POINTS_FAR_REPULSION, 0u);
+    for(uint32_t i = 0; i < N*NB_RANDOM_POINTS_FAR_REPULSION; i++){
+        random_numbers_size_NxRand[i] = rand_uint32_between(&thing->rand_state, 0u, N);
+    }
+    memcpy_CPU_to_CUDA_uint32(thing->random_numbers_size_NxRand_cuda, random_numbers_size_NxRand, N*NB_RANDOM_POINTS_FAR_REPULSION);
 
     // init value for the denominator : 1.0f
     float one = 1.0f;
-    memcpy_CPU_to_CUDA_float(thing->Qdenom_cuda, &one, 1u);
+    memcpy_CPU_to_CUDA_float(thing->now_Qdenom_cuda, &one, 1u);
+    memcpy_CPU_to_CUDA_float(thing->Qdenom_EMA_cuda, &one, 1u);
 }
 
 // 1: gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion
@@ -121,25 +110,21 @@ void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing){
     float cauchy_alpha = thing->hparam_LDkernel_alpha[0];
     pthread_mutex_unlock(thing->mutex_hparam_LDkernel_alpha);
 
-    // each cuda thread will be responsible for a set (i, k) 
-    uint32_t K = NB_RANDOM_POINTS_FAR_REPULSION > thing->Khd ? NB_RANDOM_POINTS_FAR_REPULSION : thing->Khd;
-    K = K > thing->Kld ? K : thing->Kld;
-    uint32_t N = thing->N;
+    // Kld devrait etre une constante
 
-    attention: utiliser smem_N_floats_per_thread pour calculer le block size
 
     // block size: 1 dimensional
-    dim3 block_size  = { GPU_BLOCK_SIZE_X, 1, 1 };
+    // dim3 block_size  = { GPU_BLOCK_SIZE_X, 1, 1 };
     
     // shared memory constraint: in this case we don t use shared memory
     
-    printf("block_size: %u\n", block_size.x);
+    /* printf("block_size: %u\n", block_size.x);
 
 
     // print the values of thing->max_block_dimensions_cpu and thing->max_grid_dimensions_cpu:
     printf("max_block_dimensions_cpu: %u %u %u\n", thing->max_block_dimensions_cpu[0], thing->max_block_dimensions_cpu[1], thing->max_block_dimensions_cpu[2]);
     printf("max_grid_dimensions_cpu: %u %u %u\n", thing->max_grid_dimensions_cpu[0], thing->max_grid_dimensions_cpu[1], thing->max_grid_dimensions_cpu[2]);
-    die();
+    die(); */
 
     // cf copilot pour les launch failures
     
@@ -160,7 +145,7 @@ ok solution trouvée: no loop du tout (pas de shared mem)
 
 utiliser atomicAdd pour updater les momenta 
 
-pour denom: a mona vis le plus simple est de remplir un array de taille N avec les valeurs de denom, et de faire un sum reduction sur ce array
+pour denom: a mon avis le plus simple est de remplir un array de taille N avec les valeurs de denom, et de faire un sum reduction sur ce array
     */
 
 }
@@ -201,9 +186,10 @@ for (int i = threadIdx.x, ctr = 0; i < imax; i += BLOCKDIMX, ctr++) {
 }
 " */
 
+
 // depending on the (user-determined) use of GPU vs CPU, this initialises the appropriate struct
-void new_EmbeddingMaker(EmbeddingMaker* thing, uint32_t N, uint32_t Mld, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
-    float** Xld, uint32_t Khd, uint32_t Kld, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD,\
+void new_EmbeddingMaker(EmbeddingMaker* thing, uint32_t N, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
+    float** Xld, uint32_t Khd, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD,\
     float** P, pthread_mutex_t* mutex_P,\
     GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsHD, GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsLD
     , GPU_CPU_float_buffer* GPU_CPU_comms_P){
@@ -211,13 +197,13 @@ void new_EmbeddingMaker(EmbeddingMaker* thing, uint32_t N, uint32_t Mld, uint32_
     thing->maker_gpu = NULL;
     if(USE_GPU){
         thing->maker_gpu = (EmbeddingMaker_GPU*) malloc(sizeof(EmbeddingMaker_GPU));
-        new_EmbeddingMaker_GPU(thing->maker_gpu, N, Mld, thread_rand_seed, mutexes_sizeN,\
-            Xld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD, P, mutex_P,\
+        new_EmbeddingMaker_GPU(thing->maker_gpu, N, thread_rand_seed, mutexes_sizeN,\
+            Xld, Khd, neighsLD, neighsHD, furthest_neighdists_LD, P, mutex_P,\
             GPU_CPU_comms_neighsHD, GPU_CPU_comms_neighsLD, GPU_CPU_comms_P);
     } else {
         thing->maker_cpu = (EmbeddingMaker_CPU*) malloc(sizeof(EmbeddingMaker_CPU));
-        new_EmbeddingMaker_CPU(thing->maker_cpu, N, Mld, thread_rand_seed, mutexes_sizeN,\
-            Xld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD, P, mutex_P);
+        new_EmbeddingMaker_CPU(thing->maker_cpu, N, thread_rand_seed, mutexes_sizeN,\
+            Xld, Khd, neighsLD, neighsHD, furthest_neighdists_LD, P, mutex_P);
     }
 }
 
@@ -237,10 +223,13 @@ void new_EmbeddingMaker(EmbeddingMaker* thing, uint32_t N, uint32_t Mld, uint32_
 // this function sends the Xld and furthest_neighdists_LD towards the CPU, in an UNSAFE manner
 static void send_Xld_and_furthest_neighdists_LD_to_CPU(EmbeddingMaker_GPU* thing){
     // Xld: GPU to CPU
-    memcpy_CUDA_to_CPU_float(as_float_1d(thing->Xld_cpu, thing->N, thing->Mld), thing->Xld_base_cuda, thing->N*thing->Mld);
+    memcpy_CUDA_to_CPU_float(as_float_1d(thing->Xld_cpu, thing->N, Mld), thing->Xld_base_cuda, thing->N*Mld);
     // furthest_neighdists_LD: GPU to CPU
     memcpy_CUDA_to_CPU_float(thing->furthest_neighdists_LD_cpu, thing->furthest_neighdists_LD_cuda, thing->N);
 }
+
+// mes constructors sont plus bon avec les Mld et Kld qui ont ete harcodés
+
 
 // this function receives the neighs and P from the CPU, in a SAFE manner
 //  Read if ready, then request sync
@@ -250,7 +239,7 @@ static void receive_neighs_and_P_from_CPU(EmbeddingMaker_GPU* thing){
 
     if(is_ready_now(sync_neigh_LD)){
         pthread_mutex_lock(sync_neigh_LD->mutex_buffer);
-        memcpy_CPU_to_CUDA_uint32(thing->neighsLD_cuda, thing->GPU_CPU_comms_neighsLD->buffer, thing->N*thing->Kld);
+        memcpy_CPU_to_CUDA_uint32(thing->neighsLD_cuda, thing->GPU_CPU_comms_neighsLD->buffer, thing->N*Kld);
         // cudaMemcpy(thing->neighsLD_cuda, thing->GPU_CPU_comms_neighsLD->buffer, thing->N*thing->Kld*sizeof(uint32_t), cudaMemcpyHostToDevice);
         pthread_mutex_unlock(sync_neigh_LD->mutex_buffer);
         set_ready(sync_neigh_LD, false);
@@ -258,8 +247,6 @@ static void receive_neighs_and_P_from_CPU(EmbeddingMaker_GPU* thing){
     if(!is_requesting_now(sync_neigh_LD)){
         notify_request(sync_neigh_LD);
     } // request for the next sync
-
-
 
     // 2) neighsHD: CPU to GPU.
     GPU_CPU_sync* sync_neigh_HD = &thing->GPU_CPU_comms_neighsHD->sync;

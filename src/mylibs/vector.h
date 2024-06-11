@@ -9,6 +9,10 @@ void normalise_float_matrix(float** X, uint32_t N, uint32_t M);
 // float Euclidean distance between two vectors of size M
 float f_euclidean_sq(float* Xi, float* Xj, uint32_t M);
 
+// float Euclidean distance between two vectors of knwon size Mld
+float f_euclidean_sq_in_embedding(float* Xi, float* Xj);
+
+
 // 2d kernel for tsne
 float kernel_LD(float eucl_sq, float alpha);
 

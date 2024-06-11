@@ -1,7 +1,7 @@
 #include "neighHD_discoverer.h"
 
 void new_NeighHDDiscoverer(NeighHDDiscoverer* thing, uint32_t _N_, uint32_t _M_, uint32_t* thread_rand_seed, uint32_t max_nb_of_subthreads,\
-        pthread_mutex_t* mutexes_sizeN, float** _Xhd_, uint32_t _Khd_, uint32_t _Kld_, uint32_t** _neighsHD_, uint32_t** _neighsLD_,\
+        pthread_mutex_t* mutexes_sizeN, float** _Xhd_, uint32_t _Khd_, uint32_t** _neighsHD_, uint32_t** _neighsLD_,\
         float* furthest_neighdists_HD, float** _Psym_,\
     float* perplexity, pthread_mutex_t* mutex_perplexity, pthread_mutex_t*  mutex_LDHD_balance, float* other_space_pct){
     // worker and subthread management
@@ -28,7 +28,6 @@ void new_NeighHDDiscoverer(NeighHDDiscoverer* thing, uint32_t _N_, uint32_t _M_,
     thing->Mhd = _M_;
     thing->Xhd = _Xhd_;
     thing->Khd = _Khd_;
-    thing->Kld = _Kld_;
     thing->neighsHD = _neighsHD_;
     thing->neighsLD = _neighsLD_;
     thing->furthest_neighdists_HD = furthest_neighdists_HD;
@@ -83,7 +82,6 @@ void new_NeighHDDiscoverer(NeighHDDiscoverer* thing, uint32_t _N_, uint32_t _M_,
         subthread_data->Xhd = _Xhd_;
         subthread_data->Mhd = _M_;
         subthread_data->Khd = _Khd_;
-        subthread_data->Kld = _Kld_;
         subthread_data->neighsHD = _neighsHD_;
         subthread_data->neighsLD = _neighsLD_;
         subthread_data->furthest_neighdists_HD = furthest_neighdists_HD;
@@ -210,7 +208,7 @@ void refine_HD_neighbours(SubthreadHD_data* thing){
         thing->random_indices_exploration[i] = rand_uint32_between(&thing->rand_state, 0u, thing->N);}
     // between 0 and Kld
     for(uint32_t i = 0u; i < NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES; i++){
-        thing->random_indices_exploitation_LD[i] = rand_uint32_between(&thing->rand_state, 0u, thing->Kld);}
+        thing->random_indices_exploitation_LD[i] = rand_uint32_between(&thing->rand_state, 0u, Kld);}
     // between 0 and Khd
     for(uint32_t i = 0u; i < NEIGH_NEAR_EXPLOITATION_HD_N_SAMPLES; i++){
         thing->random_indices_exploitation_HD[i] = rand_uint32_between(&thing->rand_state, 0u, thing->Khd);}

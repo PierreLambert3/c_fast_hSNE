@@ -60,6 +60,14 @@ float f_euclidean_sq(float* Xi, float* Xj, uint32_t M){
     return sum;
 }
 
+float f_euclidean_sq_in_embedding(float* Xi, float* Xj){
+    float sum = 0.0f;
+    for (uint32_t i = 0; i < Mld; i++) {
+        float diff = Xi[i] - Xj[i];
+        sum += diff * diff;}
+    return sum;
+}
+
 inline float fast_logf(float a) {
     float x = a - 1;
     float sum = 0;

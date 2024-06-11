@@ -3,8 +3,8 @@
 
 
 void new_NeighLDDiscoverer(NeighLDDiscoverer* thing, uint32_t _N_, uint32_t* thread_rand_seed, uint32_t max_nb_of_subthreads,\
-    pthread_mutex_t* mutexes_sizeN, float** _Xld_, float** _Xhd_, uint32_t _Mld_, uint32_t _Khd_,\
-    uint32_t _Kld_, uint32_t** _neighsLD_, uint32_t** _neighsHD_, float* furthest_neighdists_LD,\
+    pthread_mutex_t* mutexes_sizeN, float** _Xld_, float** _Xhd_, uint32_t _Khd_,\
+    uint32_t** _neighsLD_, uint32_t** _neighsHD_, float* furthest_neighdists_LD,\
     float* _ptr_kernel_LD_alpha_, pthread_mutex_t* _mutex_kernel_LD_alpha_, pthread_mutex_t*  mutex_LDHD_balance, float* other_space_pct){
 
     // work-management data
@@ -23,14 +23,12 @@ void new_NeighLDDiscoverer(NeighLDDiscoverer* thing, uint32_t _N_, uint32_t* thr
     thing->other_space_pct          = other_space_pct;
 
     // safe GPU / CPU communication: neighsLD
-    thing->GPU_CPU_comms_neighsLD = malloc_GPU_CPU_uint32_buffer(_N_*_Kld_);
+    thing->GPU_CPU_comms_neighsLD = malloc_GPU_CPU_uint32_buffer(_N_*Kld);
 
     // initialise algorithm data on this thread
     thing->N = _N_;
     thing->Xld = _Xld_;
-    thing->Mld = _Mld_;
     thing->Khd = _Khd_;
-    thing->Kld = _Kld_;
     thing->neighsLD = _neighsLD_;
     thing->neighsHD = _neighsHD_;
     thing->furthest_neighdists_LD = furthest_neighdists_LD;
@@ -48,9 +46,7 @@ void new_NeighLDDiscoverer(NeighLDDiscoverer* thing, uint32_t _N_, uint32_t* thr
         subthread_data->R = 0u;
         subthread_data->N_new_neighs = 0u;
         subthread_data->Xld = _Xld_;
-        subthread_data->Mld = _Mld_;
         subthread_data->Khd = _Khd_;
-        subthread_data->Kld = _Kld_;
         subthread_data->neighsLD = _neighsLD_;
         subthread_data->neighsHD = _neighsHD_;
         subthread_data->furthest_neighdists_LD = furthest_neighdists_LD;
@@ -86,12 +82,12 @@ bool attempt_to_add_LD_neighbour(uint32_t i, uint32_t j, float euclsq_ij, Subthr
     uint32_t furthest_k = 0u;
     // !!!!!!!!!!!  unsafe here: j position is not locked !!!!!!!!!!!!!!!!!
     pthread_mutex_lock(&thing->mutexes_sizeN[i]); 
-    for(uint32_t k = 0u; k < thing->Kld; k++){
+    for(uint32_t k = 0u; k < Kld; k++){
         if(thing->neighsLD[i][k] == j){
             pthread_mutex_unlock(&thing->mutexes_sizeN[i]);
             return false;// j is already a neighbour of i
         } 
-        float dist = f_euclidean_sq(thing->Xld[i], thing->Xld[thing->neighsLD[i][k]], thing->Mld);
+        float dist = f_euclidean_sq_in_embedding(thing->Xld[i], thing->Xld[thing->neighsLD[i][k]]);
         if(dist > furthest_d_i){
             second_furthest_d_i = furthest_d_i;
             furthest_d_i = dist;
@@ -119,7 +115,7 @@ void refine_LD_neighbours(SubthreadData* thing){
         thing->random_indices_exploration[i] = rand_uint32_between(&thing->rand_state, 0u, thing->N);}
     // between 0 and Kld
     for(uint32_t i = 0u; i < NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES; i++){
-        thing->random_indices_exploitation_LD[i] = rand_uint32_between(&thing->rand_state, 0u, thing->Kld);}
+        thing->random_indices_exploitation_LD[i] = rand_uint32_between(&thing->rand_state, 0u, Kld);}
     // between 0 and Khd
     for(uint32_t i = 0u; i < NEIGH_NEAR_EXPLOITATION_HD_N_SAMPLES; i++){
         thing->random_indices_exploitation_HD[i] = rand_uint32_between(&thing->rand_state, 0u, thing->Khd);}
@@ -147,7 +143,7 @@ void refine_LD_neighbours(SubthreadData* thing){
             uint32_t i_2 = i < j ? j : i;
             pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
             pthread_mutex_lock(&thing->mutexes_sizeN[i_2]); 
-            euclsq_ij    = f_euclidean_sq(thing->Xld[i], thing->Xld[j], thing->Mld);
+            euclsq_ij    = f_euclidean_sq_in_embedding(thing->Xld[i], thing->Xld[j]);
             furthest_d_i = thing->furthest_neighdists_LD[i];
             furthest_d_j = thing->furthest_neighdists_LD[j];
             pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
@@ -157,14 +153,14 @@ void refine_LD_neighbours(SubthreadData* thing){
                 if(attempt_to_add_LD_neighbour(i, j, euclsq_ij, thing)){
                     new_neigh = true;
 
-                    for(uint32_t k = 0u; k < thing->Kld; k++){
+                    for(uint32_t k = 0u; k < Kld; k++){
                         uint32_t i_candidate = thing->neighsLD[i][k];
                         if(i_candidate != j){
                             uint32_t i_1 = i_candidate < j ? i_candidate : j;
                             uint32_t i_2 = i_candidate < j ? j : i_candidate;
                             pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
                             pthread_mutex_lock(&thing->mutexes_sizeN[i_2]);
-                            float euclsq_ij_candidate = f_euclidean_sq(thing->Xld[i_candidate], thing->Xld[j], thing->Mld);
+                            float euclsq_ij_candidate = f_euclidean_sq_in_embedding(thing->Xld[i_candidate], thing->Xld[j]);
                             float furthest_d_i_candidate = thing->furthest_neighdists_LD[i_candidate];
                             float furthest_d_j_candidate = thing->furthest_neighdists_LD[j];
                             pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
@@ -196,14 +192,14 @@ void refine_LD_neighbours(SubthreadData* thing){
         uint32_t k1 = thing->random_indices_exploitation_LD[(i+0)%NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES];
         uint32_t k2 = thing->random_indices_exploitation_LD[(i+1)%NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES];
         if(k2 == k1){
-            k2 = (k2 + 1) % thing->Kld;}
+            k2 = (k2 + 1) % Kld;}
         j = thing->neighsLD[thing->neighsLD[i][k1]][k2];
         if(i != j){
             uint32_t i_1 = i < j ? i : j;
             uint32_t i_2 = i < j ? j : i;
             pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
             pthread_mutex_lock(&thing->mutexes_sizeN[i_2]); 
-            euclsq_ij    = f_euclidean_sq(thing->Xld[i], thing->Xld[j], thing->Mld);
+            euclsq_ij    = f_euclidean_sq_in_embedding(thing->Xld[i], thing->Xld[j]);
             furthest_d_i = thing->furthest_neighdists_LD[i];
             furthest_d_j = thing->furthest_neighdists_LD[j];
             pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
@@ -212,14 +208,14 @@ void refine_LD_neighbours(SubthreadData* thing){
                 if(attempt_to_add_LD_neighbour(i, j, euclsq_ij, thing)){
                     new_neigh = true;
                     
-                    for(uint32_t k = 0u; k < thing->Kld; k++){
+                    for(uint32_t k = 0u; k < Kld; k++){
                         uint32_t i_candidate = thing->neighsLD[i][k];
                         if(i_candidate != j){
                             uint32_t i_1 = i_candidate < j ? i_candidate : j;
                             uint32_t i_2 = i_candidate < j ? j : i_candidate;
                             pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
                             pthread_mutex_lock(&thing->mutexes_sizeN[i_2]);
-                            float euclsq_ij_candidate = f_euclidean_sq(thing->Xld[i_candidate], thing->Xld[j], thing->Mld);
+                            float euclsq_ij_candidate = f_euclidean_sq_in_embedding(thing->Xld[i_candidate], thing->Xld[j]);
                             float furthest_d_i_candidate = thing->furthest_neighdists_LD[i_candidate];
                             float furthest_d_j_candidate = thing->furthest_neighdists_LD[j];
                             pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
@@ -258,14 +254,14 @@ void refine_LD_neighbours(SubthreadData* thing){
         k2 = tmpK4 < tmpK5 ? tmpK4 : tmpK5;
         k2 = k2 < tmpK6 ? k2 : tmpK6;
         if(k2 == k1){
-            k2 = (k2 + 1) % thing->Kld;}
+            k2 = (k2 + 1) % Kld;}
         j = thing->neighsLD[thing->neighsLD[i][k1]][k2];
         if(i != j){
             uint32_t i_1 = i < j ? i : j;
             uint32_t i_2 = i < j ? j : i;
             pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
             pthread_mutex_lock(&thing->mutexes_sizeN[i_2]); 
-            euclsq_ij    = f_euclidean_sq(thing->Xld[i], thing->Xld[j], thing->Mld);
+            euclsq_ij    = f_euclidean_sq_in_embedding(thing->Xld[i], thing->Xld[j]);
             furthest_d_i = thing->furthest_neighdists_LD[i];
             furthest_d_j = thing->furthest_neighdists_LD[j];
             pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
@@ -274,14 +270,14 @@ void refine_LD_neighbours(SubthreadData* thing){
                 if(attempt_to_add_LD_neighbour(i, j, euclsq_ij, thing)){
                     new_neigh = true;
 
-                    for(uint32_t k = 0u; k < thing->Kld; k++){
+                    for(uint32_t k = 0u; k < Kld; k++){
                         uint32_t i_candidate = thing->neighsLD[i][k];
                         if(i_candidate != j){
                             uint32_t i_1 = i_candidate < j ? i_candidate : j;
                             uint32_t i_2 = i_candidate < j ? j : i_candidate;
                             pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
                             pthread_mutex_lock(&thing->mutexes_sizeN[i_2]);
-                            float euclsq_ij_candidate = f_euclidean_sq(thing->Xld[i_candidate], thing->Xld[j], thing->Mld);
+                            float euclsq_ij_candidate = f_euclidean_sq_in_embedding(thing->Xld[i_candidate], thing->Xld[j]);
                             float furthest_d_i_candidate = thing->furthest_neighdists_LD[i_candidate];
                             float furthest_d_j_candidate = thing->furthest_neighdists_LD[j];
                             pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
@@ -310,14 +306,14 @@ void refine_LD_neighbours(SubthreadData* thing){
         if(k1 > 0u){
             k1 = k1 - 1u;
             if(k2 == k1){
-                k2 = (k2 + 1u) % thing->Kld;}
+                k2 = (k2 + 1u) % Kld;}
             j = thing->neighsLD[thing->neighsLD[i][k1]][k2];
             if(i != j){
                 uint32_t i_1 = i < j ? i : j;
                 uint32_t i_2 = i < j ? j : i;
                 pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
                 pthread_mutex_lock(&thing->mutexes_sizeN[i_2]); 
-                euclsq_ij    = f_euclidean_sq(thing->Xld[i], thing->Xld[j], thing->Mld);
+                euclsq_ij    = f_euclidean_sq_in_embedding(thing->Xld[i], thing->Xld[j]);
                 furthest_d_i = thing->furthest_neighdists_LD[i];
                 furthest_d_j = thing->furthest_neighdists_LD[j];
                 pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
@@ -367,7 +363,7 @@ void refine_LD_neighbours(SubthreadData* thing){
             uint32_t i_2 = i < j ? j : i;
             pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
             pthread_mutex_lock(&thing->mutexes_sizeN[i_2]); 
-            euclsq_ij    = f_euclidean_sq(thing->Xld[i], thing->Xld[j], thing->Mld);
+            euclsq_ij    = f_euclidean_sq_in_embedding(thing->Xld[i], thing->Xld[j]);
             furthest_d_i = thing->furthest_neighdists_LD[i];
             furthest_d_j = thing->furthest_neighdists_LD[j];
             pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
@@ -377,14 +373,14 @@ void refine_LD_neighbours(SubthreadData* thing){
                     new_neigh = true;
 
 
-                    for(uint32_t k = 0u; k < thing->Kld; k++){
+                    for(uint32_t k = 0u; k < Kld; k++){
                         uint32_t i_candidate = thing->neighsLD[i][k];
                         if(i_candidate != j){
                             uint32_t i_1 = i_candidate < j ? i_candidate : j;
                             uint32_t i_2 = i_candidate < j ? j : i_candidate;
                             pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
                             pthread_mutex_lock(&thing->mutexes_sizeN[i_2]);
-                            float euclsq_ij_candidate = f_euclidean_sq(thing->Xld[i_candidate], thing->Xld[j], thing->Mld);
+                            float euclsq_ij_candidate = f_euclidean_sq_in_embedding(thing->Xld[i_candidate], thing->Xld[j]);
                             float furthest_d_i_candidate = thing->furthest_neighdists_LD[i_candidate];
                             float furthest_d_j_candidate = thing->furthest_neighdists_LD[j];
                             pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
@@ -416,7 +412,7 @@ void refine_LD_neighbours(SubthreadData* thing){
             uint32_t i_2 = i < j ? j : i;
             pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
             pthread_mutex_lock(&thing->mutexes_sizeN[i_2]); 
-            euclsq_ij    = f_euclidean_sq(thing->Xld[i], thing->Xld[j], thing->Mld);
+            euclsq_ij    = f_euclidean_sq_in_embedding(thing->Xld[i], thing->Xld[j]);
             furthest_d_i = thing->furthest_neighdists_LD[i];
             furthest_d_j = thing->furthest_neighdists_LD[j];
             pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
@@ -443,7 +439,7 @@ void refine_LD_neighbours(SubthreadData* thing){
             uint32_t i_2 = i < j ? j : i;
             pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
             pthread_mutex_lock(&thing->mutexes_sizeN[i_2]); 
-            euclsq_ij    = f_euclidean_sq(thing->Xld[i], thing->Xld[j], thing->Mld);
+            euclsq_ij    = f_euclidean_sq_in_embedding(thing->Xld[i], thing->Xld[j]);
             furthest_d_i = thing->furthest_neighdists_LD[i];
             furthest_d_j = thing->furthest_neighdists_LD[j];
             pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
@@ -452,14 +448,14 @@ void refine_LD_neighbours(SubthreadData* thing){
                 if(attempt_to_add_LD_neighbour(i, j, euclsq_ij, thing)){
                     new_neigh = true;
                     
-                    for(uint32_t k = 0u; k < thing->Kld; k++){
+                    for(uint32_t k = 0u; k < Kld; k++){
                         uint32_t i_candidate = thing->neighsLD[i][k];
                         if(i_candidate != j){
                             uint32_t i_1 = i_candidate < j ? i_candidate : j;
                             uint32_t i_2 = i_candidate < j ? j : i_candidate;
                             pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
                             pthread_mutex_lock(&thing->mutexes_sizeN[i_2]);
-                            float euclsq_ij_candidate = f_euclidean_sq(thing->Xld[i_candidate], thing->Xld[j], thing->Mld);
+                            float euclsq_ij_candidate = f_euclidean_sq_in_embedding(thing->Xld[i_candidate], thing->Xld[j]);
                             float furthest_d_i_candidate = thing->furthest_neighdists_LD[i_candidate];
                             float furthest_d_j_candidate = thing->furthest_neighdists_LD[j];
                             pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
@@ -491,9 +487,9 @@ void refine_LD_neighbours(SubthreadData* thing){
             // first refinement
             uint32_t k_1 = thing->random_indices_exploitation_LD[i%NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES];
             uint32_t k_2 = thing->random_indices_exploitation_LD[(i+3)%NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES];
-            if(k_1 == k_2){k_2 = (k_2 + 1u) % thing->Kld;} // make sure they are different
-            float d_1 = f_euclidean_sq(thing->Xld[i], thing->Xld[thing->neighsLD[i][k_1]], thing->Mld);
-            float d_2 = f_euclidean_sq(thing->Xld[i], thing->Xld[thing->neighsLD[i][k_2]], thing->Mld);
+            if(k_1 == k_2){k_2 = (k_2 + 1u) % Kld;} // make sure they are different
+            float d_1 = f_euclidean_sq_in_embedding(thing->Xld[i], thing->Xld[thing->neighsLD[i][k_1]]);
+            float d_2 = f_euclidean_sq_in_embedding(thing->Xld[i], thing->Xld[thing->neighsLD[i][k_2]]);
             if(d_1 < d_2 && k_1 > k_2){ // need to swap these two
                 pthread_mutex_lock(&thing->mutexes_sizeN[i]);
                 uint32_t j1 = thing->neighsLD[i][k_1];
@@ -505,9 +501,9 @@ void refine_LD_neighbours(SubthreadData* thing){
             // second refinement
             k_1 = thing->random_indices_exploitation_LD[(i+4)%NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES];
             k_2 = thing->random_indices_exploitation_LD[(i+5)%NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES];
-            if(k_1 == k_2){k_2 = (k_2 + 1u) % thing->Kld;} // make sure they are different
-            d_1 = f_euclidean_sq(thing->Xld[i], thing->Xld[thing->neighsLD[i][k_1]], thing->Mld);
-            d_2 = f_euclidean_sq(thing->Xld[i], thing->Xld[thing->neighsLD[i][k_2]], thing->Mld);
+            if(k_1 == k_2){k_2 = (k_2 + 1u) % Kld;} // make sure they are different
+            d_1 = f_euclidean_sq_in_embedding(thing->Xld[i], thing->Xld[thing->neighsLD[i][k_1]]);
+            d_2 = f_euclidean_sq_in_embedding(thing->Xld[i], thing->Xld[thing->neighsLD[i][k_2]]);
             if(d_1 < d_2 && k_1 > k_2){ // need to swap these two
                 uint32_t j1 = thing->neighsLD[i][k_1];
                 uint32_t j2 = thing->neighsLD[i][k_2];
@@ -519,9 +515,9 @@ void refine_LD_neighbours(SubthreadData* thing){
             // third refinement
             k_1 = thing->random_indices_exploitation_LD[(i+6)%NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES];
             k_2 = thing->random_indices_exploitation_LD[(i+7)%NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES];
-            if(k_1 == k_2){k_2 = (k_2 + 1u) % thing->Kld;} // make sure they are different
-            d_1 = f_euclidean_sq(thing->Xld[i], thing->Xld[thing->neighsLD[i][k_1]], thing->Mld);
-            d_2 = f_euclidean_sq(thing->Xld[i], thing->Xld[thing->neighsLD[i][k_2]], thing->Mld);
+            if(k_1 == k_2){k_2 = (k_2 + 1u) % Kld;} // make sure they are different
+            d_1 = f_euclidean_sq_in_embedding(thing->Xld[i], thing->Xld[thing->neighsLD[i][k_1]]);
+            d_2 = f_euclidean_sq_in_embedding(thing->Xld[i], thing->Xld[thing->neighsLD[i][k_2]]);
             if(d_1 < d_2 && k_1 > k_2){ // need to swap these two
                 uint32_t j1 = thing->neighsLD[i][k_1];
                 uint32_t j2 = thing->neighsLD[i][k_2];
@@ -596,7 +592,7 @@ void NeighLDDiscoverer_perhaps_sync_with_GPU(NeighLDDiscoverer* thing){
         wait_full_path_finished(thing);
         // copy the neighsLD to the buffer, safely
         pthread_mutex_lock(thing->GPU_CPU_comms_neighsLD->sync.mutex_buffer);
-        memcpy(thing->GPU_CPU_comms_neighsLD->buffer, as_uint32_1d(thing->neighsLD, thing->N, thing->Kld), thing->N*thing->Kld*sizeof(uint32_t));
+        memcpy(thing->GPU_CPU_comms_neighsLD->buffer, as_uint32_1d(thing->neighsLD, thing->N, Kld), thing->N*Kld*sizeof(uint32_t));
         pthread_mutex_unlock(thing->GPU_CPU_comms_neighsLD->sync.mutex_buffer);
         // notify the GPU that the data is ready
         notify_ready(sync);

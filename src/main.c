@@ -25,7 +25,7 @@ SDL2
 also need to install the SDL2_ttf library: sudo apt-get install libsdl2-ttf-dev and makefile change
 */
 
-void gram_schmidt(float** Wproj, uint32_t Mhd, uint32_t Mld) {
+void gram_schmidt(float** Wproj, uint32_t Mhd) {
     for (uint32_t i = 0; i < Mhd; i++) {
         for (uint32_t j = 0; j < i; j++) {
             float dot = 0.0f;
@@ -47,7 +47,7 @@ void gram_schmidt(float** Wproj, uint32_t Mhd, uint32_t Mld) {
     }
 }
 
-void init_Xld(float** Xhd, float** Xld, uint32_t N, uint32_t Mhd, uint32_t Mld) {
+void init_Xld(float** Xhd, float** Xld, uint32_t N, uint32_t Mhd) {
     uint32_t rand_state = (uint32_t)time(NULL);
     // initialise a random projection matrix Wproj of size Mhd x Mld, on the stack
     float** Wproj = malloc_float_matrix(Mhd, Mld, 0.0f);
@@ -57,7 +57,7 @@ void init_Xld(float** Xhd, float** Xld, uint32_t N, uint32_t Mhd, uint32_t Mld) 
         }
     }
     // make it orthogonal
-    gram_schmidt(Wproj, Mhd, Mld);
+    gram_schmidt(Wproj, Mhd);
     // project Xhd onto Xld
     for (uint32_t i = 0; i < N; i++) {
         for (uint32_t j = 0; j < Mld; j++) {
@@ -108,13 +108,11 @@ int main() {
     uint32_t rand_state_main_thread = (uint32_t)time(NULL);
 
     // ~~~~~  initialise the common variables for the threads  ~~~~~
-    const uint32_t  Mld = 2;
     float     perplexity = 50.0f;
     pthread_mutex_t* mutex_perplexity = mutex_allocate_and_init();
     float     LD_kernel_alpha   = 1.0f;
     pthread_mutex_t* mutex_kernel_LD_alpha = mutex_allocate_and_init();
     uint32_t  Khd = (uint32_t)roundf(3.0f * perplexity);
-    uint32_t  Kld = 10;
     float     momentum_alpha    = 0.95f; // TODO : modulated by temporal alignment
     float     nesterov_alpha    = 0.05f;
    /*  uint32_t  n_threads_HDneigh, n_threads_LDneigh, n_threads_embedding;
@@ -152,7 +150,7 @@ int main() {
     pthread_mutex_t* mutexes_sizeN = mutexes_allocate_and_init(N);
     // 3: initialise the LD representation of the dataset as a random projection of Xhd
     float**    Xld = malloc_float_matrix(N, Mld, -41.0f);
-    init_Xld(Xhd, Xld, N, Mhd, Mld);
+    init_Xld(Xhd, Xld, N, Mhd);
     // 4: initialise the Nesterov momentum acceleration parameters
     float**    Xld_momentum = malloc_float_matrix(N, Mld, 0.0f);
     /* float** Xld_EMA_gradalignement = malloc_float_matrix(N, Mld, 1.0f); // TODO : this array will capture how well the recent gradients align with the momentum at their iteration. This is used to modulates the momentum_alpha*/
@@ -184,17 +182,17 @@ int main() {
     NeighHDDiscoverer* neighHD_discoverer = (NeighHDDiscoverer*)malloc(sizeof(NeighHDDiscoverer));
     NeighLDDiscoverer* neighLD_discoverer = (NeighLDDiscoverer*)malloc(sizeof(NeighLDDiscoverer));
     new_NeighHDDiscoverer(neighHD_discoverer, N, Mhd, &rand_state_main_thread, n_threads_HDneigh,\
-        mutexes_sizeN, Xhd, Khd, Kld, neighsHD, neighsLD,\
+        mutexes_sizeN, Xhd, Khd, neighsHD, neighsLD,\
         furthest_neighdists_HD, Psym,\
         &perplexity, mutex_perplexity, mutex_LDHD_balance, &neighLD_discoverer->pct_new_neighs);
     new_NeighLDDiscoverer(neighLD_discoverer, N, &rand_state_main_thread, n_threads_LDneigh,\
-        mutexes_sizeN, Xld, Xhd, Mld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD,\
+        mutexes_sizeN, Xld, Xhd, Khd, neighsLD, neighsHD, furthest_neighdists_LD,\
         &LD_kernel_alpha, mutex_kernel_LD_alpha, mutex_LDHD_balance, &neighHD_discoverer->pct_new_neighs);
 
     // create the embedding maker
     EmbeddingMaker* embedding_maker = (EmbeddingMaker*)malloc(sizeof(EmbeddingMaker));
-    new_EmbeddingMaker(embedding_maker, N, Mld, &rand_state_main_thread, mutexes_sizeN,\
-        Xld, Khd, Kld, neighsLD, neighsHD, furthest_neighdists_LD,\
+    new_EmbeddingMaker(embedding_maker, N, &rand_state_main_thread, mutexes_sizeN,\
+        Xld, Khd, neighsLD, neighsHD, furthest_neighdists_LD,\
         Psym, mutex_P,\
         neighHD_discoverer->GPU_CPU_comms_neighsHD, neighLD_discoverer->GPU_CPU_comms_neighsLD, neighHD_discoverer->GPU_CPU_comms_Psym);
     
