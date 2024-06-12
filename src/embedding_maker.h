@@ -88,8 +88,5 @@ void  start_thread_EmbeddingMaker(EmbeddingMaker* thing);
 void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing);
 void momenta_leak_GPU(EmbeddingMaker_GPU* thing);
 void apply_momenta_and_decay_GPU(EmbeddingMaker_GPU* thing);
-
-// cuda kernels
-__global__ void interactions_K_HD(int N, int Khd, float* dvc_Pij, float* dvc_Xld_nester, uint32_t* dvc_neighsHD, float* furthest_neighdists_LD, float Qdenom_EMA, float alpha_cauchy, float* dvc_Qdenom_elements, float* dvc_momenta_attraction, float* dvc_momenta_repulsion);
-
+void fill_raw_momenta_launch_cuda(int, int, int, int, float*, float*, uint32_t*, float*, float, float, double*, float*, float*);
 #endif // EMBEDDING_MAKER_H

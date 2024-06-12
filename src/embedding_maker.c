@@ -1,9 +1,5 @@
 #include "embedding_maker.h"
 
-
-
-
-
 void new_EmbeddingMaker_CPU(EmbeddingMaker_CPU* thing, uint32_t N, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
     float** Xld, uint32_t Khd, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD,\
     float** P, pthread_mutex_t* mutex_P){
@@ -42,7 +38,6 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     thing->GPU_CPU_comms_P        = GPU_CPU_comms_P;
     
     // things on GPU
-    cudaError_t cuda_error;
     malloc_1d_float_cuda(&thing->Xld_base_cuda, N*Mld);
     malloc_1d_float_cuda(&thing->Xld_nesterov_cuda, N*Mld);
     malloc_1d_float_cuda(&thing->momenta_attraction_cuda, N*Mld);
@@ -132,28 +127,8 @@ void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing){
     float cauchy_alpha = thing->hparam_LDkernel_alpha[0];
     pthread_mutex_unlock(thing->mutex_hparam_LDkernel_alpha);
 
-    // ~~~~~~~~~  Kernel 1: HD neighbours  ~~~~~~~~~
-    interactions_K_HD<<<thing->Kern_HD_n_blocks, thing->Kern_HD_block_size>>>(thing->N, thing->Khd, thing->P_cuda, thing->Xld_nesterov_cuda, thing->neighsHD_cuda, thing->furthest_neighdists_LD_cuda, thing->Qdenom_EMA, cauchy_alpha, thing->elements_of_Qdenom_cuda, thing->momenta_attraction_cuda, thing->momenta_repulsion_far_cuda);
+    fill_raw_momenta_launch_cuda((int)thing->Kern_HD_n_blocks, (int)thing->Kern_HD_block_size, thing->N, thing->Khd, thing->P_cuda, thing->Xld_nesterov_cuda, thing->neighsHD_cuda, thing->furthest_neighdists_LD_cuda, thing->Qdenom_EMA, cauchy_alpha, thing->elements_of_Qdenom_cuda, thing->momenta_attraction_cuda, thing->momenta_repulsion_far_cuda);
 
-In general, it s a good practice to separate your CUDA code and C/C++ code into different files. You can compile your C/C++ code with gcc and your CUDA code with nvcc, and then link the resulting object files together.
-
-This way, you can take full advantage of the features of both compilers and avoid potential compatibility issues.
-
-
-CF la longue reponose de copilot pour les modifications (et pas oublier de creer un ficher .cu)
-
-
-    // cf copilot pour les launch failures
-    
-
-/* 
-
-ok solution trouvée: no loop du tout (pas de shared mem)
-
-utiliser atomicAdd pour updater les momenta 
-
-pour denom: a mon avis le plus simple est de remplir un array de taille N avec les valeurs de denom, et de faire un sum reduction sur ce array
-    */
 
 }
 
@@ -169,9 +144,9 @@ void momenta_leak_GPU(EmbeddingMaker_GPU* thing){
 // apply momenta to Xld, regenerate Xld_nesterov, decay momenta
 void apply_momenta_and_decay_GPU(EmbeddingMaker_GPU* thing){
     // get the repulsion multiplier hyperparameter
-    pthread_mutex_lock(thing->mutex_hparam_repulsion_multiplier);
+    /* pthread_mutex_lock(thing->mutex_hparam_repulsion_multiplier);
     float repulsion_multiplier = thing->hparam_repulsion_multiplier[0];
-    pthread_mutex_unlock(thing->mutex_hparam_repulsion_multiplier);
+    pthread_mutex_unlock(thing->mutex_hparam_repulsion_multiplier); */
 }
 
 /* "
@@ -299,8 +274,7 @@ Description of the periodic exchanges with other threads:
 void* routine_EmbeddingMaker_GPU(void* arg){
     EmbeddingMaker_GPU* thing = (EmbeddingMaker_GPU*) arg;
     thing->is_running = true;
-    double start_time, current_time;
-    start_time = time_seconds();
+    double start_time = time_seconds();
     while(thing->is_running){
         // ~~~~~~~~~~ gradient descent ~~~~~~~~~~
         // gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion

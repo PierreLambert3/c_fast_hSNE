@@ -213,7 +213,6 @@ void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
 
         // ------------ draw the CPU usage balance between LD and HD neighbour discoverers -------------
         // first get the balance
-        float balance = 0.0f;
         pthread_mutex_lock(thing->neighLD_discoverer->mutex_LDHD_balance);
         float HD_discopct = thing->neighLD_discoverer->other_space_pct[0];
         float LD_discopct = thing->neighLD_discoverer->pct_new_neighs;
