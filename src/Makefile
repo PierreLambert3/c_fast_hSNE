@@ -1,7 +1,7 @@
 CC=gcc
 NVCC=nvcc
 NVCC_FLAGS=-O3
-GCC_FLAGS=-I. -I./mylibs -I./extlibs -I/usr/include/SDL2 -O3 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-unused-function -fopenmp 
+GCC_FLAGS=-I. -I./mylibs -I./extlibs -I/usr/include/SDL2 -O3 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-unused-function -Wno-unused-variable -fopenmp 
 GCC_LDFLAGS=-lSDL2  -lSDL2_ttf -lm -fopenmp
 NVCC_LDFLAGS=-lcudart -lSDL2 -lSDL2_ttf -lm -Xcompiler -fopenmp
 DEPS = $(wildcard *.h) $(wildcard mylibs/*.h) $(wildcard extlibs/*.h)

@@ -28,14 +28,31 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     thing->Qdenom_EMA = 1.0f;
     thing->mutex_P = mutex_P;
 
-    // initialise CUDA adn get device properties
+    while(true){
+        printf("need to initialise (exactly) the Qdenom value here, else the first iterations wil provoque an explosion");
+    }
+
+
+    // initialise CUDA and get device properties
     struct cudaDeviceProp prop = initialise_cuda();
     print_cuda_device_info(prop);
+
+    // if compute_capability < 3.5, die
+    if(prop.major < 3 || (prop.major == 3 && prop.minor < 5)){
+        dying_breath("compute capability of the GPU is < 3.5: please use the CPU-based version instead");}
 
     // safe GPU / CPU communication: neighsHD and Psym
     thing->GPU_CPU_comms_neighsHD = GPU_CPU_comms_neighsHD;
     thing->GPU_CPU_comms_neighsLD = GPU_CPU_comms_neighsLD;
     thing->GPU_CPU_comms_P        = GPU_CPU_comms_P;
+
+    // streams    
+    if(cudaStreamCreate(&thing->stream_K_HD) != cudaSuccess){
+        dying_breath("cudaStreamCreate error");}
+    if(cudaStreamCreate(&thing->stream_K_LD) != cudaSuccess){
+        dying_breath("cudaStreamCreate error");}
+    if(cudaStreamCreate(&thing->stream_rand) != cudaSuccess){
+        dying_breath("cudaStreamCreate error");}
     
     // things on GPU
     malloc_1d_float_cuda(&thing->Xld_base_cuda, N*Mld);
@@ -106,15 +123,19 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     bool size_is_ok = false;
     while(!size_is_ok){
         KernHD_n_blocks = (KernHD_n_threads_total + KernHD_block_size - 1u) / KernHD_block_size;
-        uint32_t block_register_n_32bits = KernHD_block_size * (1u + 1u + 1u + (2u * Mld));
-        uint32_t block_smem_n_32bits     = 1u + 1u + KernHD_block_size * (2u + (4u * Mld));
+        uint32_t block_register_n_32bits = KernHD_block_size * (1u + 1u + 1u + 2u + (2u * Mld));
+        uint32_t PAD = 0;
+        while ((4u * Mld + PAD) % 32 == 0) {
+            PAD++;}
+        uint32_t block_smem_n_32bits = KernHD_block_size * (4u * Mld + PAD);
         bool smem_ok = block_smem_n_32bits     < smem_max_N_floats_per_block;
         bool reg_ok  = block_register_n_32bits < registers_max_N_floats_per_block;
-        size_is_ok = smem_ok && reg_ok;
+        size_is_ok = (smem_ok && reg_ok);
         if(!size_is_ok){
             KernHD_block_size = KernHD_block_size / 2u;
         }
     }
+    if(KernHD_block_size % 32u != 0u){dying_breath("block size is not a multiple of 32 (thats really wierd, where did you get your GPU?)\n");}
     thing->Kern_HD_n_blocks   = KernHD_n_blocks;
     thing->Kern_HD_block_size = KernHD_block_size;
 }
@@ -127,9 +148,8 @@ void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing){
     float cauchy_alpha = thing->hparam_LDkernel_alpha[0];
     pthread_mutex_unlock(thing->mutex_hparam_LDkernel_alpha);
 
-    fill_raw_momenta_launch_cuda((int)thing->Kern_HD_n_blocks, (int)thing->Kern_HD_block_size, thing->N, thing->Khd, thing->P_cuda, thing->Xld_nesterov_cuda, thing->neighsHD_cuda, thing->furthest_neighdists_LD_cuda, thing->Qdenom_EMA, cauchy_alpha, thing->elements_of_Qdenom_cuda, thing->momenta_attraction_cuda, thing->momenta_repulsion_far_cuda);
-
-
+    fill_raw_momenta_launch_cuda(thing->stream_K_HD, thing->stream_K_LD, thing->stream_rand, (int)thing->Kern_HD_block_size, (int)thing->Kern_HD_n_blocks, thing->N, thing->Khd, thing->P_cuda, thing->Xld_nesterov_cuda, thing->neighsHD_cuda, thing->furthest_neighdists_LD_cuda, thing->Qdenom_EMA, cauchy_alpha, thing->elements_of_Qdenom_cuda, thing->momenta_attraction_cuda, thing->momenta_repulsion_far_cuda);
+    die();
 }
 
 // momentum leak: momenta_repulsion_far gets smoothed across neighbours (with conservation of vector norm)
@@ -148,25 +168,6 @@ void apply_momenta_and_decay_GPU(EmbeddingMaker_GPU* thing){
     float repulsion_multiplier = thing->hparam_repulsion_multiplier[0];
     pthread_mutex_unlock(thing->mutex_hparam_repulsion_multiplier); */
 }
-
-/* "
-__shared__ float v[PDIST* BLOCKDIMX];
-cudaStream_t streams[PDIST];
-for (int k = 0; k < PDIST; ++k) {
-    cudaStreamCreate(&streams[k]);
-    cudaMemcpyAsync(&v[k], &arr[threadIdx.x + k * BLOCKDIMX], 8, cudaMemcpyDeviceToDevice, streams[k]);
-}
-
-for (int i = threadIdx.x, ctr = 0; i < imax; i += BLOCKDIMX, ctr++) {
-    int ctr_mod = ctr % PDIST;
-    cudaStreamSynchronize(streams[ctr_mod]);
-    float locvar = v[ctr_mod];
-    if (i < imax - PDIST * BLOCKDIMX) {
-        cudaMemcpyAsync(&v[ctr_mod], &arr[i + PDIST * BLOCKDIMX], 8, cudaMemcpyDeviceToDevice, streams[ctr_mod]);
-    }
-    // More instructions using locvar, for example, transcendentals
-}
-" */
 
 
 // depending on the (user-determined) use of GPU vs CPU, this initialises the appropriate struct
@@ -209,8 +210,6 @@ static void send_Xld_and_furthest_neighdists_LD_to_CPU(EmbeddingMaker_GPU* thing
     // furthest_neighdists_LD: GPU to CPU
     memcpy_CUDA_to_CPU_float(thing->furthest_neighdists_LD_cpu, thing->furthest_neighdists_LD_cuda, thing->N);
 }
-
-// mes constructors sont plus bon avec les Mld et Kld qui ont ete harcodés
 
 
 // this function receives the neighs and P from the CPU, in a SAFE manner

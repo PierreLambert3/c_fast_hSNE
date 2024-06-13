@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include "includes_global.h"
 
 void dying_breath(const char* message);
 void die();

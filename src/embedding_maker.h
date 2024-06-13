@@ -38,12 +38,14 @@ typedef struct {
     GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsLD;
     GPU_CPU_float_buffer*  GPU_CPU_comms_P;
     
-
     // GPU kernel, number of floats un shared memory per thread
     uint32_t Kern_HD_n_blocks;
     uint32_t Kern_HD_block_size;
 
-
+    // streams
+    cudaStream_t stream_K_HD;
+    cudaStream_t stream_K_LD;
+    cudaStream_t stream_rand;
 
     // things on GPU
     float*          Xld_base_cuda;     // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data
@@ -88,5 +90,6 @@ void  start_thread_EmbeddingMaker(EmbeddingMaker* thing);
 void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing);
 void momenta_leak_GPU(EmbeddingMaker_GPU* thing);
 void apply_momenta_and_decay_GPU(EmbeddingMaker_GPU* thing);
-void fill_raw_momenta_launch_cuda(int, int, int, int, float*, float*, uint32_t*, float*, float, float, double*, float*, float*);
+
+void fill_raw_momenta_launch_cuda(cudaStream_t, cudaStream_t, cudaStream_t, int, int, int, int, float*, float*, uint32_t*, float*, float, float, double*, float*, float*);
 #endif // EMBEDDING_MAKER_H
