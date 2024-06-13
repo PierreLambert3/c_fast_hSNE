@@ -25,13 +25,19 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     thing->neighsLD_cpu = neighsLD;
     thing->neighsHD_cpu = neighsHD;
     thing->furthest_neighdists_LD_cpu = furthest_neighdists_LD;
-    thing->Qdenom_EMA = 1.0f;
     thing->mutex_P = mutex_P;
 
-    while(true){
-        printf("need to initialise (exactly) the Qdenom value here, else the first iterations wil provoque an explosion");
+    // initialise the Qdenom value with an estoimator
+    double Qdenom_accumulator = 0.0;
+    uint32_t n_samples = 10000u;
+    for(uint32_t n_votes = 0; n_votes < n_samples; n_votes++){
+        uint32_t i = rand_uint32_between(&thing->rand_state, 0u, N);
+        uint32_t j = rand_uint32_between(&thing->rand_state, 0u, N);
+        Qdenom_accumulator += 1.0f / powf(1.0f + f_euclidean_sq_in_embedding(Xld[i], Xld[j])/thing->hparam_LDkernel_alpha[0], thing->hparam_LDkernel_alpha[0]);
     }
-
+    uint32_t matrix_area = N * (N-1);
+    double   scaling_factor = (double) (matrix_area) / (double) n_samples;
+    thing->Qdenom_EMA = (float) (Qdenom_accumulator * scaling_factor);
 
     // initialise CUDA and get device properties
     struct cudaDeviceProp prop = initialise_cuda();
@@ -115,19 +121,15 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     if(target_block_size % 32 != 0){dying_breath("target block size is not a multiple of 32\n");}
 
     // ~~~~~~~~~  Kernel 1: HD neighbours  ~~~~~~~~~
+    uint32_t max_nb_different_i = 2u + (target_block_size) / Khd;
    // number of threads in total 
     uint32_t KernHD_n_threads_total = thing->N * thing->Khd;
     // determine block size and number of blocks
-    uint32_t KernHD_n_blocks   = 0u;
     uint32_t KernHD_block_size = target_block_size;
     bool size_is_ok = false;
     while(!size_is_ok){
-        KernHD_n_blocks = (KernHD_n_threads_total + KernHD_block_size - 1u) / KernHD_block_size;
         uint32_t block_register_n_32bits = KernHD_block_size * (1u + 1u + 1u + 2u + (2u * Mld));
-        uint32_t PAD = 0;
-        while ((4u * Mld + PAD) % 32 == 0) {
-            PAD++;}
-        uint32_t block_smem_n_32bits = KernHD_block_size * (4u * Mld + PAD);
+        uint32_t block_smem_n_32bits = (max_nb_different_i * (2u * Mld)) + (max_nb_different_i * Mld) + (KernHD_block_size * (4u * Mld));
         bool smem_ok = block_smem_n_32bits     < smem_max_N_floats_per_block;
         bool reg_ok  = block_register_n_32bits < registers_max_N_floats_per_block;
         size_is_ok = (smem_ok && reg_ok);
@@ -136,8 +138,9 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
         }
     }
     if(KernHD_block_size % 32u != 0u){dying_breath("block size is not a multiple of 32 (thats really wierd, where did you get your GPU?)\n");}
-    thing->Kern_HD_n_blocks   = KernHD_n_blocks;
+    thing->Kern_HD_n_blocks   = (KernHD_n_threads_total + KernHD_block_size - 1u) / KernHD_block_size;
     thing->Kern_HD_block_size = KernHD_block_size;
+    
 }
 
 // 1: gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion
