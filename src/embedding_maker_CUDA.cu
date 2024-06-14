@@ -88,8 +88,10 @@ __global__ void interactions_K_HD(uint32_t N, uint32_t Khd, uint32_t N_distinct_
     }
     // atomic agregation of the momenta
     // i : on attrac_momenta_aggregator_i
+    ok ici faire parallel reduction (et verifier le resultat)
     for(uint32_t m = 0; m < Mld; m++){
         atomicAdd(&attrac_momenta_aggregator_i[m], attrac_momentum_update_i_T[m * blockDim.x]);}
+    
     // j : directly to global memory
     for(uint32_t m = 0; m < Mld; m++){
         atomicAdd(&dvc_momenta_attraction[j * Mld + m], attrac_momentum_update_j_T[m * blockDim.x]);}
