@@ -113,6 +113,9 @@ int main() {
     float     LD_kernel_alpha   = 1.0f;
     pthread_mutex_t* mutex_kernel_LD_alpha = mutex_allocate_and_init();
     uint32_t  Khd = (uint32_t)roundf(3.0f * perplexity);
+    // for memory efficiency, if using GPU, Kld should be a multiple of 32, round it up
+    if(USE_GPU){
+        Khd = ((Khd/32u)*32u) + 32u;}
     float     momentum_alpha    = 0.95f; // TODO : modulated by temporal alignment
     float     nesterov_alpha    = 0.05f;
    /*  uint32_t  n_threads_HDneigh, n_threads_LDneigh, n_threads_embedding;
@@ -127,7 +130,7 @@ int main() {
         n_threads_embedding = 1u + (uint32_t) ((float)machine_nb_processors * 0.4);
     } */
     if(!USE_GPU){
-        dying_breath("CUDA is not implemented yet. \n\
+        dying_breath("CPU version is not implemented yet. \n\
         Once done, don't forget to modify the DYNAMIC LD/HD thread balance accordingly");
     }
 
