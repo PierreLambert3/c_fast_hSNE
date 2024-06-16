@@ -114,12 +114,56 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
  *                                                   | |              
  *                                                   |_|              
  */
-    uint32_t smem_max_N_floats_per_block      = prop.sharedMemPerBlock/sizeof(float);
-    uint32_t registers_max_N_floats_per_block = prop.regsPerBlock;
+    if(Khd > (uint32_t)prop.maxThreadsDim[0]){
+        dying_breath("Khd is too large for the GPU");}
+    uint32_t smem_max_N_floats = prop.sharedMemPerBlock/sizeof(float);
+    uint32_t reg_max_N_floats  = prop.regsPerBlock;
+
+    float smem_pct_target_occupancy = 0.667f;
+    float reg_pct_target_occupancy  = 0.725f;
+    uint32_t target_n_floats_smem = (uint32_t) floorf(smem_pct_target_occupancy * (float) smem_max_N_floats);
+    uint32_t target_n_floats_regs = (uint32_t) floorf(reg_pct_target_occupancy * (float)reg_max_N_floats);
+    
+    // ~~~~~~~~~  Kernel 1: HD neighbours, determining block size and grid shape  ~~~~~~~~~
+    // grid 1d ; block 2d : (Khd, Ni)
+    // smem_N_floats          : Ni * (2u*Mld + Mld) + (Ni*Khd)*(4u*Mld)
+    // smem memory constraint : smem_N_floats < smem_pct_target_occupancy * smem_max_N_floats
+    // registers_N_floats          : (Ni*Khd) * (30u + Mld)
+    // registers memory constraint : registers_N_floats < 0.75 * reg_max_N_floats
+    thing->Kern_HD_gridshape  = malloc_uint32_t(3, 1u);
+    thing->Kern_HD_blockshape = malloc_uint32_t(3, 1u);
+    uint32_t kern1_Ni = 1u;
+    while (true) {
+        uint32_t next_smem_N_floats = (kern1_Ni + 1) * (2u * Mld + Mld) + ((kern1_Ni + 1) * Khd) * (4u * Mld);
+        uint32_t next_reg_N_floats  = ((kern1_Ni + 1) * Khd) * (30u + Mld);
+        bool next_blocksize_ok = (kern1_Ni + 1) < (uint32_t) prop.maxThreadsDim[1]; // for 2nd dimension (first dim is fixed to Khd)
+        bool next_reg_ok  = next_reg_N_floats  <= target_n_floats_regs;
+        bool next_smem_ok = next_smem_N_floats <= target_n_floats_smem;
+        if(!next_smem_ok || !next_reg_ok || !next_blocksize_ok){
+            break;}
+        kern1_Ni++;
+    }
+    uint32_t smem_N_floats = kern1_Ni * (2u * Mld + Mld) + (kern1_Ni * Khd) * (4u * Mld);
+    uint32_t reg_N_floats  = (kern1_Ni * Khd) * (30u + Mld);
+    bool reg_ok  = reg_N_floats < 0.75 * reg_max_N_floats;
+    bool smem_ok = smem_N_floats < target_n_floats_smem;
+    bool blocksize_ok = (kern1_Ni) < (uint32_t) prop.maxThreadsDim[1];
+    if(!reg_ok || !smem_ok || !blocksize_ok){
+        dying_breath("could not find a suitable block size for the kernel 1");}
+
+    printf("block shapes for kernel 1: (%u, %u)\n", Khd, kern1_Ni);
+    printf("memory usage and maxima for kernel 1: smem_N_floats, target_n_floats_smem, reg_N_floats, reg_max_N_floats %u %u %u %u\n", smem_N_floats, target_n_floats_smem, reg_N_floats, reg_max_N_floats);
+    
+    thing->Kern_HD_blockshape[0] = Khd;
+    thing->Kern_HD_blockshape[1] = kern1_Ni; // Ni!
+    thing->Kern_HD_blockshape[2] = 1u;
+    thing->Kern_HD_gridshape[0]  = (N*Khd + (Khd * kern1_Ni) - 1u) / (Khd * kern1_Ni);
+    
+
+    /*
     // target block size (1-dimensional)   (also check that it's indeed a multiple of 32)
     uint32_t target_block_size = prop.maxThreadsDim[0] / 2;
     if(target_block_size % 32 != 0){dying_breath("target block size is not a multiple of 32\n");}
-
     // ~~~~~~~~~  Kernel 1: HD neighbours  ~~~~~~~~~
     uint32_t max_nb_different_i = 2u + (target_block_size) / Khd;
     // determine block size and number of blocks
@@ -133,14 +177,17 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
         bool reg_ok  = 2u * block_register_n_32bits < registers_max_N_floats_per_block;
         size_is_ok = (smem_ok && reg_ok);
         if(!size_is_ok){
-            KernHD_block_size -= 32u;}
+            KernHD_block_size /= 2u;}
     }
     // number of threads in total
     uint32_t n_threads_total = thing->N * thing->Khd;
     if(KernHD_block_size % 32u != 0u){dying_breath("block size is not a multiple of 32 (thats really wierd, where did you get your GPU?)\n");}
+    // check that the block size is a power of 2
+    if((KernHD_block_size & (KernHD_block_size - 1u)) != 0u){dying_breath("block size is not a power of 2\n");}
     thing->Kern_HD_n_blocks   = (n_threads_total + KernHD_block_size - 1u) / KernHD_block_size;
     thing->Kern_HD_block_size = KernHD_block_size;
     if((int)thing->Kern_HD_n_blocks > prop.maxGridSize[0]){dying_breath("too many blocks for the GPU, please use the CPU or refactor the code to use 2d grids\n");}
+    */
 }
 
 // 1: gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion
@@ -151,7 +198,9 @@ void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing){
     float cauchy_alpha = thing->hparam_LDkernel_alpha[0];
     pthread_mutex_unlock(thing->mutex_hparam_LDkernel_alpha);
 
-    fill_raw_momenta_launch_cuda(thing->stream_K_HD, thing->stream_K_LD, thing->stream_rand, (int)thing->Kern_HD_block_size, (int)thing->Kern_HD_n_blocks, thing->N, thing->Khd, thing->P_cuda, thing->Xld_nesterov_cuda, thing->neighsHD_cuda, thing->furthest_neighdists_LD_cuda, thing->Qdenom_EMA, cauchy_alpha, thing->elements_of_Qdenom_cuda, thing->momenta_attraction_cuda, thing->momenta_repulsion_far_cuda);
+
+    fill_raw_momenta_launch_cuda(thing->stream_K_HD, thing->stream_K_LD, thing->stream_rand,\
+        thing->Kern_HD_blockshape, thing->Kern_HD_gridshape, thing->N, thing->Khd, thing->P_cuda, thing->Xld_nesterov_cuda, thing->neighsHD_cuda, thing->furthest_neighdists_LD_cuda, thing->Qdenom_EMA, cauchy_alpha, thing->elements_of_Qdenom_cuda, thing->momenta_attraction_cuda, thing->momenta_repulsion_far_cuda);
     die();
 }
 

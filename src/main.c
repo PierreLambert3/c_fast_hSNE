@@ -30,11 +30,9 @@ void gram_schmidt(float** Wproj, uint32_t Mhd) {
         for (uint32_t j = 0; j < i; j++) {
             float dot = 0.0f;
             for (uint32_t k = 0; k < Mld; k++) {
-                dot += Wproj[i][k] * Wproj[j][k];
-            }
+                dot += Wproj[i][k] * Wproj[j][k];}
             for (uint32_t k = 0; k < Mld; k++) {
-                Wproj[i][k] -= dot * Wproj[j][k];
-            }
+                Wproj[i][k] -= dot * Wproj[j][k];}
         }
         float norm = FLOAT_EPS;
         for (uint32_t k = 0; k < Mld; k++) {
@@ -112,10 +110,12 @@ int main() {
     pthread_mutex_t* mutex_perplexity = mutex_allocate_and_init();
     float     LD_kernel_alpha   = 1.0f;
     pthread_mutex_t* mutex_kernel_LD_alpha = mutex_allocate_and_init();
+    // Khd should be a power of 2, find the closest one to target_Khd
     uint32_t  Khd = (uint32_t)roundf(3.0f * perplexity);
     // for memory efficiency, if using GPU, Kld should be a multiple of 32, round it up
     if(USE_GPU){
         Khd = ((Khd/32u)*32u) + 32u;}
+
     float     momentum_alpha    = 0.95f; // TODO : modulated by temporal alignment
     float     nesterov_alpha    = 0.05f;
    /*  uint32_t  n_threads_HDneigh, n_threads_LDneigh, n_threads_embedding;
@@ -233,5 +233,4 @@ In C, you can use SIMD instructions either by using compiler intrinsics, which a
     return 0;
 
 }
-
 
