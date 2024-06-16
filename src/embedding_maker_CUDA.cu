@@ -80,7 +80,17 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
         Xj[m] = dvc_Xld_nester[j * Mld + m];}
     float furthest_LDneighdist_i = __ldg(&furthest_neighdists_LD[i]);
 
+    // ~~~~~~~~~~~~~~~~~~~ now for the real deal ~~~~~~~~~~~~~~~~~~~
+    // compute squared euclidean distance 
+    float eucl_sq = cuda_euclidean_sq(Xi, Xj);
+    // similarity in HD
+    float pij     = __ldg(&dvc_Pij[i * Khd + k]);
+    // similarity in LD (qij = wij / Qdenom_EMA)
+    float wij     = cuda_cauchy_kernel(eucl_sq, alpha_cauchy); 
 
+
+
+    printf("Thread %d: i = %d, k = %d   (Khd %u   Mld: %u)  j: %u   eucl %f and simi LD: %f  (wij %f)   simi HD %f\n", threadIdx.x, i, k, Khd, Mld, j, eucl_sq, wij / Qdenom_EMA, wij, pij);
 
 
     /* 

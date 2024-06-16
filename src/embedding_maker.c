@@ -199,9 +199,31 @@ void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing){
     pthread_mutex_unlock(thing->mutex_hparam_LDkernel_alpha);
 
 
-    fill_raw_momenta_launch_cuda(thing->stream_K_HD, thing->stream_K_LD, thing->stream_rand,\
+
+
+    uint32_t i = rand_uint32_between(&thing->rand_state, 0u, thing->N);
+    // copy the k Pij for i , from cuda to device
+    float* Pij = malloc_float(thing->Khd, 0.0f);
+    memcpy_CUDA_to_CPU_float(Pij, &thing->P_cuda[i*thing->Khd], thing->Khd);
+    for(uint32_t k = 0; k < thing->Khd; k++){
+        // printf("k = %u   pij = %f\n", k, 100000.0f * Pij[k]);
+        // if is inf: die()
+        if(Pij[k]>1.0f){
+            printf("k = %u   pij = %f\n", k, 100000.0f * Pij[k]);
+            dying_breath("for fucks sake");
+        }
+    }
+    printf("\n");
+    free(Pij);
+
+
+
+
+
+
+    /* fill_raw_momenta_launch_cuda(thing->stream_K_HD, thing->stream_K_LD, thing->stream_rand,\
         thing->Kern_HD_blockshape, thing->Kern_HD_gridshape, thing->N, thing->Khd, thing->P_cuda, thing->Xld_nesterov_cuda, thing->neighsHD_cuda, thing->furthest_neighdists_LD_cuda, thing->Qdenom_EMA, cauchy_alpha, thing->elements_of_Qdenom_cuda, thing->momenta_attraction_cuda, thing->momenta_repulsion_far_cuda);
-    die();
+    die(); */
 }
 
 // momentum leak: momenta_repulsion_far gets smoothed across neighbours (with conservation of vector norm)

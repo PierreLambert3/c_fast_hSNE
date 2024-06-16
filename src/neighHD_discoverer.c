@@ -60,6 +60,8 @@ void new_NeighHDDiscoverer(NeighHDDiscoverer* thing, uint32_t _N_, uint32_t _M_,
             float eucl = thing->dists_neighHD[i][k];
             float pij  = thing->Pasym[i][k] / thing->Pasym_sumJ_Pij[i];
             float pji  = (expf(-eucl / thing->radii[j]) + FLOAT_EPS) / thing->Pasym_sumJ_Pij[j];
+            if(pji > 1.0f){pji = 1.0f;}
+            if(pij > 1.0f){dying_breath("ok this is wierd");}
             float p_symmetrised = (pij + pji) / (2.0f * (float)thing->N);
             thing->Psym[i][k] = p_symmetrised;
         }
@@ -151,6 +153,7 @@ void NeighHDDiscoverer_perhaps_sync_with_GPU(NeighHDDiscoverer* thing){
         // notify the GPU that the data is ready
         notify_ready(sync_neighsHD);
     }
+    
     // for Psym
     GPU_CPU_sync* sync_Psym = &thing->GPU_CPU_comms_Psym->sync;
     if(is_requesting_now(sync_Psym) && !is_ready_now(sync_Psym)){
@@ -699,7 +702,6 @@ void update_radii(SubthreadHD_data* thing){
     pthread_mutex_unlock(thing->thread_mutex);
 }
 
-
 inline float obs_H(SubthreadHD_data* thing, uint32_t i, float radius){
     float temp_pijs[thing->Khd];
     float beta = 1.0f / (FLOAT_EPS + radius);
@@ -717,7 +719,6 @@ inline float obs_H(SubthreadHD_data* thing, uint32_t i, float radius){
     }
     return logf(sumPi) + beta*sum_P_x_dist;
 }
-
 
 // no need ot lock the mutexes_sizeN[i] because we wait for all radii threads to be finished bfore this
 void recompute_Pasym(SubthreadHD_data* thing){
@@ -741,15 +742,19 @@ void recompute_Pasym(SubthreadHD_data* thing){
 void recompute_Psym(SubthreadHD_data* thing){
     float multiplier = 1.0f / (2.0f * (float)thing->N);
     for(uint32_t i = thing->L; i < thing->R; i++){
-        float sumJ_Pij = 0.0f;
         // pthread_mutex_lock(&thing->mutexes_sizeN[i]);
         for(uint32_t k = 0u; k < thing->Khd; k++){
             uint32_t j = thing->neighsHD[i][k];
             float pij  = thing->Pasym[i][k] / thing->Pasym_sumJ_Pij[i];
             float pji  = expf(-thing->dists_neighHD[i][k] / thing->radii[j]) / thing->Pasym_sumJ_Pij[j];
+            if(pji > 1.0f){ pji = 1.0f;} // this is possible, because neighs aren t perfect (yet) and the j denom might be way too small
             thing->Psym[i][k] = (pij + pji) * multiplier;
+
+            if(thing->Psym[i][k] > 1.0f || thing->Psym[i][k] < -0.0f){
+                dying_breath("--------  recompute_Psym: Pasym > 1.0f");
+            } 
+
         }
-        thing->Pasym_sumJ_Pij[i] = sumJ_Pij;
         // pthread_mutex_unlock(&thing->mutexes_sizeN[i]);
     }
     pthread_mutex_lock(thing->thread_mutex);

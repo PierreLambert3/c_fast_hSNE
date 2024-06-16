@@ -174,7 +174,6 @@ int main() {
     float**    Psym    = malloc_float_matrix(N, Khd, 1.0f);
     // initialise the Q_denom mutex
     pthread_mutex_t* mutex_Qdenom = mutex_allocate_and_init();
-    
     // initialise the LD/HD balance mutex
     pthread_mutex_t* mutex_LDHD_balance = mutex_allocate_and_init();
     // initialise the mutex for changing Psym

@@ -7,10 +7,36 @@ void lavender_colour(SDL_Renderer* renderer) {
     SDL_SetRenderDrawColor(renderer, lavender_r, lavender_g, lavender_b, 255);
 }
 
+void background_colour(SDL_Renderer* renderer) {
+    const int background_r = 13;
+    const int background_g = 4;
+    const int background_b = 5;
+    SDL_SetRenderDrawColor(renderer, background_r, background_g, background_b, 255);
+}
+
+void dark_colour(SDL_Renderer* renderer) {
+    const int amber_r = 94;
+    const int amber_g = 18;
+    const int amber_b = 16;
+    SDL_SetRenderDrawColor(renderer, amber_r, amber_g, amber_b, 255);
+}
+
+void mid_colour(SDL_Renderer* renderer) {
+    amber_colour(renderer);
+}
+
+
 void amber_colour(SDL_Renderer* renderer) {
-    const int amber_r = 167;
-    const int amber_g = 80;
+    const int amber_r = 211;
+    const int amber_g = 86;
     const int amber_b = 0;
+    SDL_SetRenderDrawColor(renderer, amber_r, amber_g, amber_b, 255);
+}
+
+void light_colour(SDL_Renderer* renderer) {
+    const int amber_r = 254;
+    const int amber_g = 208;
+    const int amber_b = 24;
     SDL_SetRenderDrawColor(renderer, amber_r, amber_g, amber_b, 255);
 }
 
@@ -75,8 +101,7 @@ void manage_events(SDL_Event* event, GuiManager* thing) {
 }
 
 void slava_ukraini(SDL_Renderer* renderer){
-    // printf("May invaders reap what they sow.\n");
-    // draw the flag of Ukraine for a bit
+    // draw the flag of Ukraine for a bit, to annoy warmongers
     double start_time = (double)SDL_GetTicks();
     double elapsed_time = 0.0;
     while(elapsed_time < 500.0){
@@ -132,7 +157,8 @@ void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
     float x_multiplier = embedding_pixel_size / x_span;
     float y_multiplier = embedding_pixel_size / y_span;
     // clear embedding area with a rectangle
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    // SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    background_colour(renderer);
     SDL_Rect rect = {x_btm_left, y_btm_left - embedding_pixel_size, embedding_pixel_size, embedding_pixel_size};
     SDL_RenderFillRect(renderer, &rect);
     for(uint32_t i = 0; i < N; i++) {
@@ -143,7 +169,7 @@ void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
         SDL_RenderDrawPoint(renderer, pixel_x, pixel_y);
     }   
     // rectangle around the embedding
-    amber_colour(renderer);
+    mid_colour(renderer);
     SDL_Rect rect2 = {x_btm_left, y_btm_left - embedding_pixel_size, embedding_pixel_size, embedding_pixel_size};    
     SDL_RenderDrawRect(renderer, &rect2);
 
@@ -196,10 +222,10 @@ void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
         
         x = (int) (thing->periodic_counter1 * graph_W / thing->period1);
         // draw x axis as a line
-        SDL_SetRenderDrawColor(renderer, 255, 205, 105, 255);
+        light_colour(renderer);
         SDL_RenderDrawLine(renderer, x_btm_left, y_btm_left, x_btm_left + graph_W, y_btm_left);
         // draw a thin vertical rect as black to reset previously drawn things
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        background_colour(renderer);
         SDL_Rect rect2 = {x_btm_left + x, y_btm_left-graph_H, 1, graph_H};
         SDL_RenderFillRect(renderer, &rect2);
         //draw point corresponding to the current value of pct of new neighbours in LD
@@ -230,7 +256,7 @@ void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
         x = GUI_W - 0.05*GUI_W;
         y = (int) (y_btm_left - cursor_height_pct * graph_H);
         // clear the area
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        background_colour(renderer);
         SDL_Rect rect3 = {x-6, y_btm_left-graph_H, 12, graph_H};
         SDL_RenderFillRect(renderer, &rect3);
         // draw the balance
@@ -259,7 +285,7 @@ void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
     //clear a black rect 
     int x0 = 5;
     int y0 = (int) 0.9f * GUI_H;
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    background_colour(renderer);
     SDL_Rect rect0 = {x0, y0-30, 100, 60};
     SDL_RenderFillRect(renderer, &rect0);
     char elapsed_time_str[100];
@@ -321,7 +347,7 @@ int routine_GuiManager(void* arg) {
         dying_breath("TTF_OpenFont failed");}
     
     // initialise the screen with black
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    background_colour(renderer);
     SDL_RenderClear(renderer);
 
     // death to Putin
