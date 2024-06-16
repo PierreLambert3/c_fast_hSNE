@@ -51,6 +51,7 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
     uint32_t block_surface = blockDim.x * blockDim.y;
     uint32_t i0            = (block_surface * blockIdx.x) / Khd; // the value of the smallest i in the block
     uint32_t i             = i0 + threadIdx.y;
+    if( i >= N){return;} // out of bounds 
     uint32_t k             = threadIdx.x;
     uint32_t j             = dvc_neighsHD[i * Khd + k]; 
     uint32_t tid           = threadIdx.x + threadIdx.y * Khd;
@@ -63,16 +64,16 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
     extern __shared__ float smem[];
     float* momenta_aggregator_i = &smem[(i - i0) * (2u * Mld)];
     float* Xi                   = &smem[Ni*(2u*Mld) + (i - i0) * Mld];
-    float* momenta_update_i_T   = &smem[Ni*(3u*Mld) + tid];
-    float* momenta_update_j_T   = &momenta_update_i_T[block_surface * Mld];
-
-    // ~~~~~~~~~~~~~~~~~~~ Initialise registers: Xj and furthest LDneighdists for i and j ~~~~~~~~~~~~~~~~~~~
+    float* momenta_update_i_T   = &smem[Ni*(3u*Mld) + tid];  // stride for changing m: block_surface
+    float* momenta_update_j_T   = &momenta_update_i_T[block_surface * Mld]; // stride for changing m: block_surface
     if(k == 0){ // fetch Xi from DRAM
         #pragma unroll
         for (uint32_t m = 0; m < Mld; m++) {
             Xi[m] = dvc_Xld_nester[i * Mld + m];}
     }
     __syncthreads();
+
+    // ~~~~~~~~~~~~~~~~~~~ Initialise registers: Xj and furthest LDneighdists for i and j ~~~~~~~~~~~~~~~~~~~
     float furthest_LDneighdist_j = __ldg(&furthest_neighdists_LD[j]);
     float Xj[Mld];
     #pragma unroll
@@ -80,7 +81,7 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
         Xj[m] = dvc_Xld_nester[j * Mld + m];}
     float furthest_LDneighdist_i = __ldg(&furthest_neighdists_LD[i]);
 
-    // ~~~~~~~~~~~~~~~~~~~ now for the real deal ~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~ now for some computations: prepare pij and wij ~~~~~~~~~~~~~~~~~~~
     // compute squared euclidean distance 
     float eucl_sq = cuda_euclidean_sq(Xi, Xj);
     // similarity in HD
@@ -88,20 +89,40 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
     // similarity in LD (qij = wij / Qdenom_EMA)
     float wij     = cuda_cauchy_kernel(eucl_sq, alpha_cauchy); 
 
+    // ~~~~~~~~~~~~~~~~~~~ attractive forces: independant gradients ~~~~~~~~~~~~~~~~~~~
+    // fill individual updates to momenta for attraction
+    float common_gradient_multiplier = 2.0f * (pij - (wij / Qdenom_EMA)) * powf(wij, 1.0f / alpha_cauchy);
+    #pragma unroll
+    for(uint32_t m = 0; m < Mld; m++){
+        float gradient = (Xi[m] - Xj[m]) * common_gradient_multiplier;
+        momenta_update_i_T[m*block_surface] = -gradient; // i movement
+        momenta_update_j_T[m*block_surface] =  gradient; // j movement
+    }
+    // ~~~~~~~~~~~~~~~~~~~ attractive forces : aggregate ~~~~~~~~~~~~~~~~~~~
+    __syncthreads(); 
+    // first iteration of paralle reduction outside of the loop, not necessarily a power of 2
+    uint32_t stride = 1u + (block_surface / 2u);
 
 
-    printf("Thread %d: i = %d, k = %d   (Khd %u   Mld: %u)  j: %u   eucl %f and simi LD: %f  (wij %f)   simi HD %f\n", threadIdx.x, i, k, Khd, Mld, j, eucl_sq, wij / Qdenom_EMA, wij, pij);
+
+
+    carfeull: not a power of 2
+
+
+    /*
+    // ~~~~~~~~~~~~~~~~~~~ repulsive forces ~~~~~~~~~~~~~~~~~~~
+    // si pas do_repulsion: faut quand meme mettre des 0 sinon le calcul de la somme des moments est fausse
+    // bool do_repulsion = ... ;
+     */
+
+
+
+    /* if(i0 == 0)
+        printf("Thread %d: i = %d, k = %d   (Khd %u   Mld: %u)  j: %u   eucl %f and simi LD: %f  (wij %f)   simi HD %f\n",\
+         threadIdx.x, i, k, Khd, Mld, j, eucl_sq, wij / Qdenom_EMA, wij, 10000.0f * pij); */
 
 
     /* 
-
-    // compute squared euclidean distance 
-    float eucl_sq = cuda_euclidean_sq(Xi, Xj);
-    // similarity in HD  ("prefetching" to read only cache, it's not a true prefetch but it interleaves fetching with compute)
-    float pij     = __ldg(&dvc_Pij[i * Khd + k]);
-    // similarity in LD
-    float wij     = cuda_cauchy_kernel(eucl_sq, alpha_cauchy); // qij = wij / Qdenom_EMA
-
     // ~~~~~~~~~~~~~~~~~~~ attractive forces ~~~~~~~~~~~~~~~~~~~
     // 1: independent attraction momenta for each thread
     float common_gradient_multiplier = 2.0f * (pij - (wij / Qdenom_EMA)) * powf(wij, 1.0f / alpha_cauchy);
