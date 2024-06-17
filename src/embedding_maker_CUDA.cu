@@ -24,83 +24,57 @@ __device__ __forceinline__ float cuda_cauchy_kernel(float eucl_sq, float alpha){
     return 1.0f / powf(1.0f + eucl_sq/alpha, alpha);
 }
 
-
-
-__device__ void warpReduce_float_Mdim(volatile float* momenta_update_i_T, uint32_t k, uint32_t prev_len, uint32_t stride, uint32_t block_surface){
-    /* prev_len = stride;
-    stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
-    if((k + stride < prev_len)){
-        #pragma unroll
-        for(uint32_t m = 0u; m < Mld; m++){
-            momenta_update_i_T[m*block_surface] += momenta_update_i_T[m*block_surface + stride];
-        }
-    }
-    if(stride == 1u){return;} */
-
-
+__device__ void warpReduce_periodic_sumReduction_on_matrix(volatile float* matrix, uint32_t e, uint32_t prev_len, uint32_t stride, uint32_t Ncol){
     while(stride > 1u){
         prev_len = stride;
         stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
-        if((k + stride < prev_len)){
+        if((e + stride < prev_len)){
             #pragma unroll
             for(uint32_t m = 0u; m < Mld; m++){
-                momenta_update_i_T[m*block_surface] += momenta_update_i_T[m*block_surface + stride];
+                matrix[m*Ncol] += matrix[m*Ncol + stride];
             }
         }
     }
-
-    c est le if qui posait probleme: sans le if c est pas ok (car pas forcement power of 2)
-    
-    
-    /* // 32 max
-    prev_len = stride;
-    stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
-    #pragma unroll 
-    for(uint32_t m = 0u; m < Mld; m++){
-        momenta_update_i_T[m*block_surface] += momenta_update_i_T[m*block_surface + stride];
-    }
-    if(stride == 1u){return;}
-    prev_len = stride;
-    stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
-    // 16 max
-    #pragma unroll 
-    for(uint32_t m = 0u; m < Mld; m++){
-        momenta_update_i_T[m*block_surface] += momenta_update_i_T[m*block_surface + stride];
-    }
-    if(stride == 1u){return;}
-    prev_len = stride;
-    stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
-    // 8 max
-    #pragma unroll
-    for(uint32_t m = 0u; m < Mld; m++){
-        momenta_update_i_T[m*block_surface] += momenta_update_i_T[m*block_surface + stride];
-    }
-    if(stride == 1u){return;}
-    prev_len = stride;
-    stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
-    // 4 max
-    #pragma unroll
-    for(uint32_t m = 0u; m < Mld; m++){
-        momenta_update_i_T[m*block_surface] += momenta_update_i_T[m*block_surface + stride];
-    }
-    if(stride == 1u){return;}
-    prev_len = stride;
-    stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
-    // 2 max
-    #pragma unroll
-    for(uint32_t m = 0u; m < Mld; m++){
-        momenta_update_i_T[m*block_surface] += momenta_update_i_T[m*block_surface + stride];
-    }
-    if(stride == 1u){return;}
-    prev_len = stride;
-    stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
-    // 1 max
-    #pragma unroll
-    for(uint32_t m = 0u; m < Mld; m++){
-        momenta_update_i_T[m*block_surface] += momenta_update_i_T[m*block_surface + stride];
-    } */
 }
 
+// this function computes the periodic sum on a matrix of dimension (Nrows, period*Nvectors) (= (Nrows, Ncol))
+// accessing the row r, and element e of the nth vector : matrix[r * Ncol + n * period + e]
+/*
+visual example:
+
+| _A_  1  2  3  4  5  6  7  8  9  | _C_ 11 12 13 14 15 16 17 18 19  | 20 21 22 23 24 25 26 27 28 29 |
+| _B_  2  3  4  5  6  7  8  9 10  | 11  12 13 14 15 16 17 18 19 20 | 21 22 23 24 25 26 27 28 29 30 |
+| 2    3  4  5  6  7  8  9 10 11  | 12  13 14 15 16 17 18 19 20 21 | 22 23 24 25 26 27 28 29 30 31 |
+| 3    4  5  6  7  8  9 10 11 12  | 13  14 15 16 17 18 19 20 21 22 | 23 24 25 26 27 28 29 30 31 32 |
+| 4    5  6  7  8  9 10 11 12 13  | 14  15 16 17 18 19 20 21 22 23 | 24 25 26 27 28 29 30 31 32 33 |
+| 5    6  7  8  9 10 11 12 13 14  | 15  16 17 18 19 20 21 22 23 24 | 25 26 27 28 29 30 31 32 33 34 |
+| 6    7  8  9 10 11 12 13 14 15  | 16  17 18 19 20 21 22 23 24 25 | 26 27 28 29 30 31 32 33 34 35 |
+
+--> after this function, A will contain the sum (A + 1 + 2 + ... + 9) 
+                         B will contain the sum (B + 2 + 3 + ... + 10) 
+                         C will contain the sum (C + 11 + 12 + ... + 19)
+                        ... and so on
+*/
+__device__ __forceinline__ void periodic_sumReduction_on_matrix(float* matrix, uint32_t Nrows, uint32_t Ncol, uint32_t period, uint32_t e){
+    __syncthreads(); // just in case it wasn't done after writing
+    uint32_t prev_len = 2u * period;
+    uint32_t stride   = period;
+    while(stride > 32u){
+        prev_len = stride;
+        stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
+        if((e + stride < prev_len)){
+            #pragma unroll
+            for(uint32_t m = 0u; m < Mld; m++){
+                matrix[m*Ncol] += matrix[m*Ncol + stride];
+            }
+        }
+        __syncthreads();
+    }
+    // one warp remaining: no need to sync anymore (volatile float* matrix prevents reordering)
+    if(e + stride < prev_len){ 
+        warpReduce_periodic_sumReduction_on_matrix(matrix, e, prev_len, stride, Ncol);
+    }
+}
 
 /*
 grid shape : 1-d with total number of threads >= N * Khd
@@ -110,13 +84,21 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
         uint32_t* dvc_neighsHD, float* furthest_neighdists_LD, float Qdenom_EMA,\
         float alpha_cauchy, double* dvc_Qdenom_elements, float* dvc_momenta_attraction,\
         float* dvc_momenta_repulsion){
+    
+    
+    
+    
+    printf("revoir tous les indices car changement dans la forme de smem!!\n");
+    printf("ensiute il faudra finir d ecrire en global memeory\n");
+    printf("et ensuite un dernier check sur la réduction somme GT vs parallel\n");
+
     // ~~~~~~~~~~~~~~~~~~~ get i, k and j ~~~~~~~~~~~~~~~~~~~
     uint32_t Khd           = blockDim.x; // Khd is guaranteed to be >= 32u
     uint32_t Ni            = blockDim.y;
     uint32_t block_surface = blockDim.x * blockDim.y;
     uint32_t i0            = (block_surface * blockIdx.x) / Khd; // the value of the smallest i in the block
     uint32_t i             = i0 + threadIdx.y;
-    if( i >= N){return;} // out of bounds 
+    if( i >= N ){return;} // out of bounds (no guarantee that N is a multiple of Ni)
     uint32_t k             = threadIdx.x;
     uint32_t j             = dvc_neighsHD[i * Khd + k]; 
     uint32_t tid           = threadIdx.x + threadIdx.y * Khd;
@@ -135,7 +117,6 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
     Ni*Mld floats, contain for each distinct i, the Xi vector
     block_surface * (4u*Mld) floats, transposed. Contains the individual updates to momenta for attraction and repulsion for each thread, both for i and j*/
     extern __shared__ float smem[];
-    float* momenta_aggregator_i = &smem[(i - i0) * (2u * Mld)];
     float* Xi                   = &smem[Ni*(2u*Mld) + (i - i0) * Mld];
     float* momenta_update_i_T   = &smem[Ni*(3u*Mld) + tid];  // stride for changing m: block_surface
     float* momenta_update_j_T   = &momenta_update_i_T[block_surface * Mld]; // stride for changing m: block_surface
@@ -143,7 +124,6 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
         #pragma unroll
         for (uint32_t m = 0u; m < Mld; m++) {
             Xi[m] = dvc_Xld_nester[i * Mld + m];
-            momenta_aggregator_i[m] = 0.0f; 
         }
     }
     __syncthreads();
@@ -156,225 +136,62 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
     // similarity in LD (qij = wij / Qdenom_EMA)
     float wij     = cuda_cauchy_kernel(eucl_sq, alpha_cauchy); 
 
+    // ~~~~~~~~~~~~~~~~~~~ save wij for Qdenom computation ~~~~~~~~~~~~~~~~~~~
+    dvc_Qdenom_elements[i * Khd + k] = wij; // HD kernel : offset = 0   ( N_elements_of_Qdenom = N * (Khd + Kld + NB_RANDOM_POINTS_FAR_REPULSION);)
+
     // ~~~~~~~~~~~~~~~~~~~ attractive forces: independant gradients ~~~~~~~~~~~~~~~~~~~
-    // fill individual updates to momenta for attraction
-    float common_gradient_multiplier = 2.0f * (pij - (wij / Qdenom_EMA)) * powf(wij, 1.0f / alpha_cauchy);
+    // individual updates to momenta for attraction
+    float powerthing = 2.0f * powf(wij, 1.0f / alpha_cauchy);
+    float common_attraction_gradient_multiplier =  pij * powerthing;
     #pragma unroll
     for(uint32_t m = 0u; m < Mld; m++){
-        float gradient = (Xi[m] - Xj[m]) * common_gradient_multiplier;
+        float gradient = (Xi[m] - Xj[m]) * common_attraction_gradient_multiplier;
         momenta_update_i_T[m*block_surface] = -gradient; // i movement
         momenta_update_j_T[m*block_surface] =  gradient; // j movement
     }
-
-
-
-
-
-
-
-    // ~~~~~~~~~~~~~~~~~~~ insanity check ~~~~~~~~~~~~~~~~~~~
-    float ground_truth_aggregated_momenta[Mld];
-    __syncthreads();
+    // aggregate the individual updates
+    periodic_sumReduction_on_matrix(momenta_update_i_T, Mld, block_surface, Khd, k);
+    // write aggregated to global memory for point i
     if(k == 0u){
-        for(uint32_t m = 0; m < Mld; m++){
-            ground_truth_aggregated_momenta[m] = 0.0f;
-            for(uint32_t k2 = 0u; k2 < Khd; k2++){
-              ground_truth_aggregated_momenta[m] += momenta_update_i_T[m*block_surface + k2];
-            }
-        }
-        
-    }
-    __syncthreads();
-
-
-
-    // ~~~~~~~~~~~~~~~~~~~ attractive forces : aggregate ~~~~~~~~~~~~~~~~~~~
-    /* // ---------------------  THIS WORKS  ---------------------
-    uint32_t prev_len = 2u * Khd;
-    uint32_t stride   = Khd;
-    while(stride > 1u){
-        prev_len = stride;
-        stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
-        if((k + stride < prev_len)){
-            #pragma unroll
-            for(uint32_t m = 0u; m < Mld; m++){
-                momenta_update_i_T[m*block_surface] += momenta_update_i_T[m*block_surface + stride];
-            }
-        }
-        __syncthreads();
-    }
-    if(k == 0u){
+        #pragma unroll
         for(uint32_t m = 0u; m < Mld; m++){
-            momenta_aggregator_i[m] += momenta_update_i_T[m*block_surface];
+            atomicAdd(&dvc_momenta_attraction[i * Mld + m], momenta_update_i_T[m*block_surface]);
         }
     }
-    //----------------------------------------------------- */
-    uint32_t prev_len = 2u * Khd;
-    uint32_t stride   = Khd;
-    while(stride > 32u){
-        prev_len = stride;
-        stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
-        if((k + stride < prev_len)){
-            #pragma unroll
-            for(uint32_t m = 0u; m < Mld; m++){
-                momenta_update_i_T[m*block_surface] += momenta_update_i_T[m*block_surface + stride];
-            }
-        }
-        __syncthreads();
-    }
-    // one warp remaining
-    if(k + stride < prev_len){ hmmm.. est ce que vraimnet toujours 1 seul warp? 
-        warpReduce_float_Mdim(momenta_update_i_T, k, prev_len, stride, block_surface);
-    } 
-    __syncthreads(); 
-    if(k == 0u){
-        for(uint32_t m = 0u; m < Mld; m++){
-            momenta_aggregator_i[m] += momenta_update_i_T[m*block_surface];
-        }
+    // write individual updates to j attraction momenta
+    #pragma unroll
+    for(uint32_t m = 0u; m < Mld; m++){
+        atomicAdd(&dvc_momenta_attraction[j * Mld + m], momenta_update_j_T[m*block_surface]);
     }
 
-
-
-   if(k == 0u){
-        float m0_GT = ground_truth_aggregated_momenta[0] * 60000.0f;
-        float m0 = momenta_aggregator_i[0] * 60000.0f;
-        float m1_GT = ground_truth_aggregated_momenta[1] * 60000.0f;
-        float m1 = momenta_aggregator_i[1] * 60000.0f;
-        printf(" %f == %f  ,      %f == %f ?\n", m0, m0_GT, m1, m1_GT);
-    }
-    return;
-
-
-/*
-    __syncthreads();
-    if(k == 0u){
-        float m0_GT = ground_truth_aggregated_momenta[0] * 60000.0f;
-        float m0 = momenta_aggregator_i[0] * 60000.0f;
-        float m1_GT = ground_truth_aggregated_momenta[1] * 60000.0f;
-        float m1 = momenta_aggregator_i[1] * 60000.0f;
-        printf(" %f == %f  ,      %f == %f ?\n", m0, m0_GT, m1, m1_GT);
-    }
-    return;
-
-
-
-    /* if(k == 0u){
-        for(uint32_t m = 0u; m < Mld; m++){
-            Xi[m] = 0.0f; }
-    }
-    __syncthreads();
-    for(uint32_t m = 0; m < Mld; m++){
-        atomicAdd(&Xi[m], momenta_update_i_T[m*block_surface]);
-    }
-    __syncthreads();
-    if(k == 0u){
-        float v0 = Xi[0] * 60000.0f;
-        float v0bis = ground_truth_aggregated_momenta[0] * 60000.0f;
-        float v1 = Xi[1] * 60000.0f;
-        float v1bis = ground_truth_aggregated_momenta[1] * 60000.0f;
-        printf(" %f == %f  ,      %f == %f ?\n", v0, v0bis, v1, v1bis);
-    } */
-    return;
-/* ok j avais un probleme de block surface qui etait pas bon
-
-mtnt je sais que ces sommes sont ok: comparer avec mon accumulator
-ATTENTION : FAUT SAUVEGARDER LA SOMME AVANT D ACCUMULER SINON ON COMPTE 2 FOIS LES TRUCS !!! 
-
---> sauvegarder dans Xj pour k=0 */
-
-
-
-
-
-    // ~~~~~~~~~~~~~~~~~~~ attractive forces : aggregate ~~~~~~~~~~~~~~~~~~~
-    
-    /* 
-    while(stride > 32u){
-        if((k + stride < prev_len)){
-            #pragma unroll
-            for(uint32_t m = 0u; m < Mld; m++){
-                momenta_update_i_T[m*block_surface] += momenta_update_i_T[m*block_surface + stride];
-            }
-        }
-        __syncthreads(); 
-        if(stride == 1u){break;}
-        prev_len = stride;
-        stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
-        __syncthreads(); 
-    }
-    __syncthreads(); 
-    // one warp remaining
-    if(k + stride < prev_len){
-        warpReduce_float_Mdim(momenta_update_i_T, k, prev_len, stride, block_surface);
-    } */
-    __syncthreads();
-    
-
-    
     // ~~~~~~~~~~~~~~~~~~~ repulsive forces ~~~~~~~~~~~~~~~~~~~
+    // individual updates to momenta for repulsion
+    bool do_repulsion = eucl_sq > furthest_LDneighdist_i && eucl_sq > furthest_LDneighdist_j; // do repulsion if not LD neighbours. 
+    if(do_repulsion){ // the  conditional is annoying because there is no structure in the decision to do repulsion or not: x2 time taken
+        float common_repulsion_gradient_multiplier  = -(wij / Qdenom_EMA) * powerthing;
+        #pragma unroll
+        for(uint32_t m = 0u; m < Mld; m++){
+            float gradient = (Xi[m] - Xj[m]) * common_repulsion_gradient_multiplier;
+            momenta_update_i_T[m*block_surface] = -gradient; // i movement
+            momenta_update_j_T[m*block_surface] =  gradient; // j movement
+        }
+    }
+    else{ // important to set to zero, else the aggregation will be wrong
+        #pragma unroll
+        for(uint32_t m = 0u; m < Mld; m++){
+            momenta_update_i_T[m*block_surface] = 0.0f;
+            momenta_update_j_T[m*block_surface] = 0.0f;
+        }
+    }
+    // aggregate the individual updates
+    periodic_sumReduction_on_matrix(momenta_update_i_T, Mld, block_surface, Khd, k);
+    // TODO: write to the repulsion momentum
+
+
+
     // si pas do_repulsion: faut quand meme mettre des 0 sinon le calcul de la somme des moments est fausse
     // bool do_repulsion = ... ;
-     
-
-    // ~~~~~~~~~~~~~~~~~~~ save Qdenom_element ~~~~~~~~~~~~~~~~~~~
-
-
-
-    /* if(i0 == 0)
-        printf("Thread %d: i = %d, k = %d   (Khd %u   Mld: %u)  j: %u   eucl %f and simi LD: %f  (wij %f)   simi HD %f\n",\
-         threadIdx.x, i, k, Khd, Mld, j, eucl_sq, wij / Qdenom_EMA, wij, 10000.0f * pij); */
-
-
-    /* 
-    // ~~~~~~~~~~~~~~~~~~~ attractive forces ~~~~~~~~~~~~~~~~~~~
-    // 1: independent attraction momenta for each thread
-    float common_gradient_multiplier = 2.0f * (pij - (wij / Qdenom_EMA)) * powf(wij, 1.0f / alpha_cauchy);
-    #pragma unroll
-    for(uint32_t m = 0; m < Mld; m++){
-        float gradient = (Xi[m] - Xj[m]) * common_gradient_multiplier;
-        attrac_momentum_update_i_T[m * blockDim.x] = -gradient; // i movement
-        attrac_momentum_update_j_T[m * blockDim.x] =  gradient; // j movement
-    }
-    // 2: efficient parallel reduduction of these momenta (computing the sum of the momenta)
-    __syncthreads(); 
-
-    // temptemptemptemptemptemptemptemptemptemptemptemptemptemptemptemptemptemp
-    // temptemptemptemptemptemptemptemptemptemptemptemptemptemptemptemptemptemp
-    // temptemptemptemptemptemptemptemptemptemptemptemptemptemptemptemptemptemp
-    // (temporary) compute the true sum of the momenta, store in Xi
-    if(threadIdx.x == 0 || k == 0){
-        for(uint32_t m = 0; m < Mld; m++){
-            Xi[m] = 0.0f;}
-    }
-    __syncthreads();
-    for(uint32_t m = 0; m < Mld; m++){
-        atomicAdd(&Xi[m], attrac_momentum_update_i_T[m * blockDim.x]);
-        if(blockIdx.x == 0 && threadIdx.x == 0){
-            printf("momentum x 10000 %f\n", attrac_momentum_update_i_T[m * blockDim.x] * 10000.0f);
-        }
-    }
-    __syncthreads();
-    if(blockIdx.x == 0 && threadIdx.x == 0){
-        printf("\n\nThread %d: i = %d, k = %d   (Khd %u   Mld: %u)  j: %u   eucl %f and simi: %f  (wij %f) \n", threadIdx.x, i, k, Khd, Mld, j, eucl_sq, wij / Qdenom_EMA, wij); 
-        for(uint32_t m = 0; m < Mld; m++){
-            printf("(GT) sum of momenta 10000.0f: %f\n", Xi[m] * 10000.0f);
-        }
-    }
-    // temptemptemptemptemptemptemptemptemptemptemptemptemptemptemptemptemptemp
-    // temptemptemptemptemptemptemptemptemptemptemptemptemptemptemptemptemptemp
-    // temptemptemptemptemptemptemptemptemptemptemptemptemptemptemptemptemptemp
-
-    for (uint32_t stride = blockDim.x / 2; stride > 0; stride >>= 1){
-
-    }
-*/
-/* nouveau: il faut garantir que CHAQUE block commence avce k = 0 et termine avec k = K-1 
-ie: on veut des voisinages completes par block. ca permet de faire la réduction sur des vecteurs de taille constantes
-
-(attention: Khd n est pas toujours une pouissance de 2, donc faut un if dans la réduction) */
-    
-
-    /* 
+     /* 
     
     // probleme: mon parallel reduction utiliser des vecteurs de taille variable
 
@@ -430,33 +247,39 @@ ie: on veut des voisinages completes par block. ca permet de faire la réduction
 }
 
 void fill_raw_momenta_launch_cuda(cudaStream_t stream_HD, cudaStream_t stream_LD, cudaStream_t stream_rand,\
-     uint32_t* Kern_HD_blockshape, uint32_t* Kern_HD_gridshape, uint32_t N, uint32_t Khd, float* dvc_Pij, float* dvc_Xld_nester, uint32_t* dvc_neighsHD, float* furthest_neighdists_LD, float Qdenom_EMA, float alpha_cauchy, double* dvc_Qdenom_elements, float* dvc_momenta_attraction, float* dvc_momenta_repulsion){
+     uint32_t* Kern_HD_blockshape, uint32_t* Kern_HD_gridshape, uint32_t N, uint32_t Khd, float* dvc_Pij,\
+      float* dvc_Xld_nester, uint32_t* dvc_neighsHD, float* furthest_neighdists_LD, float Qdenom_EMA,\
+       float alpha_cauchy, double* dvc_Qdenom_elements,\
+        float* dvc_momenta_attraction, float* dvc_momenta_repulsion, float* dvc_momenta_repulsion_far){
     
-    // ~~~~~~~~~  launch Kernel 1 (HD neighbours) ~~~~~~~~~
-    // verify that block size is a multiple of 32
+    // ~~~~~~~~~  clear momenta (async)  ~~~~~~~~~
+    cudaMemsetAsync(dvc_momenta_attraction, 0, N * Mld * sizeof(float), stream_HD);
+    cudaMemsetAsync(dvc_momenta_repulsion, 0, N * Mld * sizeof(float), stream_LD);
+    cudaMemsetAsync(dvc_momenta_repulsion_far, 0, N * Mld * sizeof(float), stream_rand);
+
+    // ~~~~~~~~~  prepare kernel calls ~~~~~~~~~
+    // Kernel 1: HD neighbours
     uint32_t Kern_HD_block_surface = Kern_HD_blockshape[0] * Kern_HD_blockshape[1]; // N threads per block
-    if((Kern_HD_block_surface % 32) != 0){
-        printf("\n\nError: block size must be a multiple of 32\n");
-        return;
-    }
-    // shared memory size
-    uint32_t n_floats_in_smem = (Kern_HD_blockshape[1] * (2u * Mld)) + (Kern_HD_blockshape[1] * Mld) + (Kern_HD_block_surface * (4u * Mld));
-    uint32_t sharedMemorySize = (uint32_t) (sizeof(float) * n_floats_in_smem);
+    if((Kern_HD_block_surface % 32) != 0){printf("\n\nError: block size must be a multiple of 32\n");return;}
+    uint32_t Kern_HD_sharedMemorySize = (uint32_t) (sizeof(float) * ((Kern_HD_blockshape[1] * Mld) + (Kern_HD_block_surface * (2u * Mld))));
     dim3 Kern_HD_grid(Kern_HD_gridshape[0], Kern_HD_gridshape[1]);
     dim3 Kern_HD_block(Kern_HD_blockshape[0], Kern_HD_blockshape[1]);
-    printf("kernel 1, grid shape: (%d %d %d), block shape: (%d %d %d)\n", Kern_HD_grid.x, Kern_HD_grid.y, Kern_HD_grid.z, Kern_HD_block.x, Kern_HD_block.y, Kern_HD_block.z);
-    interactions_K_HD<<<Kern_HD_grid, Kern_HD_block, sharedMemorySize, stream_HD>>>(N, dvc_Pij, dvc_Xld_nester, dvc_neighsHD, furthest_neighdists_LD, Qdenom_EMA, alpha_cauchy, dvc_Qdenom_elements, dvc_momenta_attraction, dvc_momenta_repulsion);
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess){
-        printf("\n\nError: %s\n", cudaGetErrorString(err));} 
+    // Kernel 2: LD neighbours
+
+    
+    // ~~~~~~~~~  launch kernels (and wait for async memset to finish)  ~~~~~~~~~
+    // kernel 1 : HD neighbours
+    printf("kernel gid shape %u %u %u      block shape %u %u %u\n", Kern_HD_grid.x, Kern_HD_grid.y, Kern_HD_grid.z, Kern_HD_block.x, Kern_HD_block.y, Kern_HD_block.z);
+    cudaStreamSynchronize(stream_HD); // wait for the momenta to clear
+    interactions_K_HD<<<Kern_HD_grid, Kern_HD_block, Kern_HD_sharedMemorySize, stream_HD>>>(N, dvc_Pij, dvc_Xld_nester, dvc_neighsHD, furthest_neighdists_LD, Qdenom_EMA, alpha_cauchy, dvc_Qdenom_elements, dvc_momenta_attraction, dvc_momenta_repulsion);// launch the kernel 1
+    
 
 
-    // ~~~~~~~~~~~  sync streams  ~~~~~~~~~
+
+    // ~~~~~~~~~~~  sync all streams  ~~~~~~~~~
     cudaStreamSynchronize(stream_HD);
-
-
-
-    // TODO: become a god by using pretch CUDA instruction in assembly (Fermi)
+   
+    // TODO: ascend to godhood by using pretch CUDA instruction in assembly (Fermi architecture)
     // the prefetch instruction is used to load the data from global memory to the L2 cache
 }
 

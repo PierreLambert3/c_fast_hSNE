@@ -72,7 +72,7 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     malloc_1d_float_cuda(&thing->momenta_repulsion_cuda, N*Mld);
     malloc_1d_uint32_cuda(&thing->neighsLD_cuda, N*Kld);
     malloc_1d_uint32_cuda(&thing->neighsHD_cuda, N*Khd);
-    malloc_1d_float_cuda(&thing->all_neighdists_LD_cuda, N*Kld); //nouveau
+    malloc_1d_float_cuda(&thing->all_neighdists_LD_cuda, N*Kld); 
     malloc_1d_float_cuda(&thing->furthest_neighdists_LD_cuda, N);
     malloc_1d_uint32_cuda(&thing->N_elements_of_Qdenom_cuda, 1);
     malloc_1d_uint32_cuda(&thing->random_numbers_size_NxRand_cuda, N*NB_RANDOM_POINTS_FAR_REPULSION);
@@ -130,16 +130,17 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     
     // ~~~~~~~~~  Kernel 1: HD neighbours, determining block size and grid shape  ~~~~~~~~~
     // grid 1d ; block 2d : (Khd, Ni)
-    // smem_N_floats          : Ni * (2u*Mld + Mld) + (Ni*Khd)*(4u*Mld)
+    // smem_N_floats          : Ni * Mld   +  (Ni*Khd)*(2u*Mld)
     // smem memory constraint : smem_N_floats < smem_pct_target_occupancy * smem_max_N_floats
-    // registers_N_floats          : (Ni*Khd) * (30u + Mld)
+    // registers_N_floats          : (Ni*Khd) * (kern1_estimated_regs + Mld)
     // registers memory constraint : registers_N_floats < 0.75 * reg_max_N_floats
     thing->Kern_HD_gridshape  = malloc_uint32_t(3, 1u);
     thing->Kern_HD_blockshape = malloc_uint32_t(3, 1u);
+    uint32_t kern1_estimated_regs = 30u; // find a good value for this
     uint32_t kern1_Ni = 1u;
     while (true) {
-        uint32_t next_smem_N_floats = (kern1_Ni + 1) * (2u * Mld + Mld) + ((kern1_Ni + 1) * Khd) * (4u * Mld);
-        uint32_t next_reg_N_floats  = ((kern1_Ni + 1) * Khd) * (30u + Mld);
+        uint32_t next_smem_N_floats = (kern1_Ni + 1) * (Mld) + ((kern1_Ni + 1) * Khd) * (2u * Mld);
+        uint32_t next_reg_N_floats  = ((kern1_Ni + 1) * Khd) * (kern1_estimated_regs + Mld);
         bool next_blocksize_ok = (kern1_Ni + 1) < (uint32_t) prop.maxThreadsDim[1]; // for 2nd dimension (first dim is fixed to Khd)
         bool next_reg_ok  = next_reg_N_floats  <= target_n_floats_regs;
         bool next_smem_ok = next_smem_N_floats <= target_n_floats_smem;
@@ -147,8 +148,8 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
             break;}
         kern1_Ni++;
     }
-    uint32_t smem_N_floats = kern1_Ni * (2u * Mld + Mld) + (kern1_Ni * Khd) * (4u * Mld);
-    uint32_t reg_N_floats  = (kern1_Ni * Khd) * (30u + Mld);
+    uint32_t smem_N_floats = kern1_Ni * Mld + (kern1_Ni * Khd) * (2u * Mld);
+    uint32_t reg_N_floats  = (kern1_Ni * Khd) * (kern1_estimated_regs + Mld);
     bool reg_ok  = reg_N_floats < 0.75 * reg_max_N_floats;
     bool smem_ok = smem_N_floats < target_n_floats_smem;
     bool blocksize_ok = (kern1_Ni) < (uint32_t) prop.maxThreadsDim[1];
@@ -175,7 +176,10 @@ void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing){
     pthread_mutex_unlock(thing->mutex_hparam_LDkernel_alpha);
 
     fill_raw_momenta_launch_cuda(thing->stream_K_HD, thing->stream_K_LD, thing->stream_rand,\
-        thing->Kern_HD_blockshape, thing->Kern_HD_gridshape, thing->N, thing->Khd, thing->P_cuda, thing->Xld_nesterov_cuda, thing->neighsHD_cuda, thing->furthest_neighdists_LD_cuda, thing->Qdenom_EMA, cauchy_alpha, thing->elements_of_Qdenom_cuda, thing->momenta_attraction_cuda, thing->momenta_repulsion_far_cuda);
+        thing->Kern_HD_blockshape, thing->Kern_HD_gridshape, thing->N, thing->Khd, thing->P_cuda,\
+         thing->Xld_nesterov_cuda, thing->neighsHD_cuda, thing->furthest_neighdists_LD_cuda, thing->Qdenom_EMA,\
+          cauchy_alpha, thing->elements_of_Qdenom_cuda,\
+           thing->momenta_attraction_cuda, thing->momenta_repulsion_far_cuda, thing->momenta_repulsion_far_cuda);
     die();
 }
 
