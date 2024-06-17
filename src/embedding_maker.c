@@ -27,6 +27,10 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     thing->furthest_neighdists_LD_cpu = furthest_neighdists_LD;
     thing->mutex_P = mutex_P;
 
+    // if Khd is not a multiple of 32, die
+    if(Khd % 32 != 0){
+        dying_breath("Khd is not a multiple of 32");}
+
     // initialise the Qdenom value with an estoimator
     double Qdenom_accumulator = 0.0;
     uint32_t n_samples = 10000u;
@@ -160,34 +164,6 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     thing->Kern_HD_gridshape[0]  = (N*Khd + (Khd * kern1_Ni) - 1u) / (Khd * kern1_Ni);
     
 
-    /*
-    // target block size (1-dimensional)   (also check that it's indeed a multiple of 32)
-    uint32_t target_block_size = prop.maxThreadsDim[0] / 2;
-    if(target_block_size % 32 != 0){dying_breath("target block size is not a multiple of 32\n");}
-    // ~~~~~~~~~  Kernel 1: HD neighbours  ~~~~~~~~~
-    uint32_t max_nb_different_i = 2u + (target_block_size) / Khd;
-    // determine block size and number of blocks
-    uint32_t KernHD_block_size = target_block_size;
-    bool size_is_ok = false;
-    while(!size_is_ok){
-        printf("here the register size is wrong\n");
-        uint32_t block_register_n_32bits = KernHD_block_size * (1u + 1u + 1u + 2u + (2u * Mld));
-        uint32_t block_smem_n_32bits = (max_nb_different_i * (2u * Mld)) + (max_nb_different_i * Mld) + (KernHD_block_size * (4u * Mld));
-        bool smem_ok = block_smem_n_32bits     < smem_max_N_floats_per_block;
-        bool reg_ok  = 2u * block_register_n_32bits < registers_max_N_floats_per_block;
-        size_is_ok = (smem_ok && reg_ok);
-        if(!size_is_ok){
-            KernHD_block_size /= 2u;}
-    }
-    // number of threads in total
-    uint32_t n_threads_total = thing->N * thing->Khd;
-    if(KernHD_block_size % 32u != 0u){dying_breath("block size is not a multiple of 32 (thats really wierd, where did you get your GPU?)\n");}
-    // check that the block size is a power of 2
-    if((KernHD_block_size & (KernHD_block_size - 1u)) != 0u){dying_breath("block size is not a power of 2\n");}
-    thing->Kern_HD_n_blocks   = (n_threads_total + KernHD_block_size - 1u) / KernHD_block_size;
-    thing->Kern_HD_block_size = KernHD_block_size;
-    if((int)thing->Kern_HD_n_blocks > prop.maxGridSize[0]){dying_breath("too many blocks for the GPU, please use the CPU or refactor the code to use 2d grids\n");}
-    */
 }
 
 // 1: gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion

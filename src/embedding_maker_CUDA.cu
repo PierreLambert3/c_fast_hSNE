@@ -24,17 +24,82 @@ __device__ __forceinline__ float cuda_cauchy_kernel(float eucl_sq, float alpha){
     return 1.0f / powf(1.0f + eucl_sq/alpha, alpha);
 }
 
-/* 
-__device__ void warpReduce_float(volatile float* sdata, int tid){
-    no : wrong indexing (because of the transpose thing that i do)
-    sdata[tid] += sdata[tid + 32];
-    sdata[tid] += sdata[tid + 16];
-    sdata[tid] += sdata[tid + 8];
-    sdata[tid] += sdata[tid + 4];
-    sdata[tid] += sdata[tid + 2];
-    sdata[tid] += sdata[tid + 1];
+
+
+__device__ void warpReduce_float_Mdim(volatile float* momenta_update_i_T, uint32_t k, uint32_t prev_len, uint32_t stride, uint32_t block_surface){
+    /* prev_len = stride;
+    stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
+    if((k + stride < prev_len)){
+        #pragma unroll
+        for(uint32_t m = 0u; m < Mld; m++){
+            momenta_update_i_T[m*block_surface] += momenta_update_i_T[m*block_surface + stride];
+        }
+    }
+    if(stride == 1u){return;} */
+
+
+    while(stride > 1u){
+        prev_len = stride;
+        stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
+        if((k + stride < prev_len)){
+            #pragma unroll
+            for(uint32_t m = 0u; m < Mld; m++){
+                momenta_update_i_T[m*block_surface] += momenta_update_i_T[m*block_surface + stride];
+            }
+        }
+    }
+
+    c est le if qui posait probleme: sans le if c est pas ok (car pas forcement power of 2)
+    
+    
+    /* // 32 max
+    prev_len = stride;
+    stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
+    #pragma unroll 
+    for(uint32_t m = 0u; m < Mld; m++){
+        momenta_update_i_T[m*block_surface] += momenta_update_i_T[m*block_surface + stride];
+    }
+    if(stride == 1u){return;}
+    prev_len = stride;
+    stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
+    // 16 max
+    #pragma unroll 
+    for(uint32_t m = 0u; m < Mld; m++){
+        momenta_update_i_T[m*block_surface] += momenta_update_i_T[m*block_surface + stride];
+    }
+    if(stride == 1u){return;}
+    prev_len = stride;
+    stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
+    // 8 max
+    #pragma unroll
+    for(uint32_t m = 0u; m < Mld; m++){
+        momenta_update_i_T[m*block_surface] += momenta_update_i_T[m*block_surface + stride];
+    }
+    if(stride == 1u){return;}
+    prev_len = stride;
+    stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
+    // 4 max
+    #pragma unroll
+    for(uint32_t m = 0u; m < Mld; m++){
+        momenta_update_i_T[m*block_surface] += momenta_update_i_T[m*block_surface + stride];
+    }
+    if(stride == 1u){return;}
+    prev_len = stride;
+    stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
+    // 2 max
+    #pragma unroll
+    for(uint32_t m = 0u; m < Mld; m++){
+        momenta_update_i_T[m*block_surface] += momenta_update_i_T[m*block_surface + stride];
+    }
+    if(stride == 1u){return;}
+    prev_len = stride;
+    stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
+    // 1 max
+    #pragma unroll
+    for(uint32_t m = 0u; m < Mld; m++){
+        momenta_update_i_T[m*block_surface] += momenta_update_i_T[m*block_surface + stride];
+    } */
 }
- */
 
 
 /*
@@ -46,7 +111,7 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
         float alpha_cauchy, double* dvc_Qdenom_elements, float* dvc_momenta_attraction,\
         float* dvc_momenta_repulsion){
     // ~~~~~~~~~~~~~~~~~~~ get i, k and j ~~~~~~~~~~~~~~~~~~~
-    uint32_t Khd           = blockDim.x;
+    uint32_t Khd           = blockDim.x; // Khd is guaranteed to be >= 32u
     uint32_t Ni            = blockDim.y;
     uint32_t block_surface = blockDim.x * blockDim.y;
     uint32_t i0            = (block_surface * blockIdx.x) / Khd; // the value of the smallest i in the block
@@ -55,6 +120,14 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
     uint32_t k             = threadIdx.x;
     uint32_t j             = dvc_neighsHD[i * Khd + k]; 
     uint32_t tid           = threadIdx.x + threadIdx.y * Khd;
+
+    // ~~~~~~~~~~~~~~~~~~~ Initialise registers: Xj and furthest LDneighdists for i and j ~~~~~~~~~~~~~~~~~~~
+    float furthest_LDneighdist_j = __ldg(&furthest_neighdists_LD[j]);
+    float Xj[Mld];
+    #pragma unroll
+    for (uint32_t m = 0u; m < Mld; m++) { // fetch Xj from DRAM
+        Xj[m] = dvc_Xld_nester[j * Mld + m];}
+    float furthest_LDneighdist_i = __ldg(&furthest_neighdists_LD[i]);
 
     // ~~~~~~~~~~~~~~~~~~~ Initialise shared memory ~~~~~~~~~~~~~~~~~~~
     /*shared memory can be divided into 3 blocks:
@@ -66,20 +139,14 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
     float* Xi                   = &smem[Ni*(2u*Mld) + (i - i0) * Mld];
     float* momenta_update_i_T   = &smem[Ni*(3u*Mld) + tid];  // stride for changing m: block_surface
     float* momenta_update_j_T   = &momenta_update_i_T[block_surface * Mld]; // stride for changing m: block_surface
-    if(k == 0){ // fetch Xi from DRAM
+    if(k == 0){ // fetch Xi from DRAM  and  initialise aggregator
         #pragma unroll
-        for (uint32_t m = 0; m < Mld; m++) {
-            Xi[m] = dvc_Xld_nester[i * Mld + m];}
+        for (uint32_t m = 0u; m < Mld; m++) {
+            Xi[m] = dvc_Xld_nester[i * Mld + m];
+            momenta_aggregator_i[m] = 0.0f; 
+        }
     }
     __syncthreads();
-
-    // ~~~~~~~~~~~~~~~~~~~ Initialise registers: Xj and furthest LDneighdists for i and j ~~~~~~~~~~~~~~~~~~~
-    float furthest_LDneighdist_j = __ldg(&furthest_neighdists_LD[j]);
-    float Xj[Mld];
-    #pragma unroll
-    for (uint32_t m = 0; m < Mld; m++) { // fetch Xj from DRAM
-        Xj[m] = dvc_Xld_nester[j * Mld + m];}
-    float furthest_LDneighdist_i = __ldg(&furthest_neighdists_LD[i]);
 
     // ~~~~~~~~~~~~~~~~~~~ now for some computations: prepare pij and wij ~~~~~~~~~~~~~~~~~~~
     // compute squared euclidean distance 
@@ -93,27 +160,163 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
     // fill individual updates to momenta for attraction
     float common_gradient_multiplier = 2.0f * (pij - (wij / Qdenom_EMA)) * powf(wij, 1.0f / alpha_cauchy);
     #pragma unroll
-    for(uint32_t m = 0; m < Mld; m++){
+    for(uint32_t m = 0u; m < Mld; m++){
         float gradient = (Xi[m] - Xj[m]) * common_gradient_multiplier;
         momenta_update_i_T[m*block_surface] = -gradient; // i movement
         momenta_update_j_T[m*block_surface] =  gradient; // j movement
     }
+
+
+
+
+
+
+
+    // ~~~~~~~~~~~~~~~~~~~ insanity check ~~~~~~~~~~~~~~~~~~~
+    float ground_truth_aggregated_momenta[Mld];
+    __syncthreads();
+    if(k == 0u){
+        for(uint32_t m = 0; m < Mld; m++){
+            ground_truth_aggregated_momenta[m] = 0.0f;
+            for(uint32_t k2 = 0u; k2 < Khd; k2++){
+              ground_truth_aggregated_momenta[m] += momenta_update_i_T[m*block_surface + k2];
+            }
+        }
+        
+    }
+    __syncthreads();
+
+
+
     // ~~~~~~~~~~~~~~~~~~~ attractive forces : aggregate ~~~~~~~~~~~~~~~~~~~
+    /* // ---------------------  THIS WORKS  ---------------------
+    uint32_t prev_len = 2u * Khd;
+    uint32_t stride   = Khd;
+    while(stride > 1u){
+        prev_len = stride;
+        stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
+        if((k + stride < prev_len)){
+            #pragma unroll
+            for(uint32_t m = 0u; m < Mld; m++){
+                momenta_update_i_T[m*block_surface] += momenta_update_i_T[m*block_surface + stride];
+            }
+        }
+        __syncthreads();
+    }
+    if(k == 0u){
+        for(uint32_t m = 0u; m < Mld; m++){
+            momenta_aggregator_i[m] += momenta_update_i_T[m*block_surface];
+        }
+    }
+    //----------------------------------------------------- */
+    uint32_t prev_len = 2u * Khd;
+    uint32_t stride   = Khd;
+    while(stride > 32u){
+        prev_len = stride;
+        stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
+        if((k + stride < prev_len)){
+            #pragma unroll
+            for(uint32_t m = 0u; m < Mld; m++){
+                momenta_update_i_T[m*block_surface] += momenta_update_i_T[m*block_surface + stride];
+            }
+        }
+        __syncthreads();
+    }
+    // one warp remaining
+    if(k + stride < prev_len){ hmmm.. est ce que vraimnet toujours 1 seul warp? 
+        warpReduce_float_Mdim(momenta_update_i_T, k, prev_len, stride, block_surface);
+    } 
     __syncthreads(); 
-    // first iteration of paralle reduction outside of the loop, not necessarily a power of 2
-    uint32_t stride = 1u + (block_surface / 2u);
+    if(k == 0u){
+        for(uint32_t m = 0u; m < Mld; m++){
+            momenta_aggregator_i[m] += momenta_update_i_T[m*block_surface];
+        }
+    }
+
+
+
+   if(k == 0u){
+        float m0_GT = ground_truth_aggregated_momenta[0] * 60000.0f;
+        float m0 = momenta_aggregator_i[0] * 60000.0f;
+        float m1_GT = ground_truth_aggregated_momenta[1] * 60000.0f;
+        float m1 = momenta_aggregator_i[1] * 60000.0f;
+        printf(" %f == %f  ,      %f == %f ?\n", m0, m0_GT, m1, m1_GT);
+    }
+    return;
+
+
+/*
+    __syncthreads();
+    if(k == 0u){
+        float m0_GT = ground_truth_aggregated_momenta[0] * 60000.0f;
+        float m0 = momenta_aggregator_i[0] * 60000.0f;
+        float m1_GT = ground_truth_aggregated_momenta[1] * 60000.0f;
+        float m1 = momenta_aggregator_i[1] * 60000.0f;
+        printf(" %f == %f  ,      %f == %f ?\n", m0, m0_GT, m1, m1_GT);
+    }
+    return;
+
+
+
+    /* if(k == 0u){
+        for(uint32_t m = 0u; m < Mld; m++){
+            Xi[m] = 0.0f; }
+    }
+    __syncthreads();
+    for(uint32_t m = 0; m < Mld; m++){
+        atomicAdd(&Xi[m], momenta_update_i_T[m*block_surface]);
+    }
+    __syncthreads();
+    if(k == 0u){
+        float v0 = Xi[0] * 60000.0f;
+        float v0bis = ground_truth_aggregated_momenta[0] * 60000.0f;
+        float v1 = Xi[1] * 60000.0f;
+        float v1bis = ground_truth_aggregated_momenta[1] * 60000.0f;
+        printf(" %f == %f  ,      %f == %f ?\n", v0, v0bis, v1, v1bis);
+    } */
+    return;
+/* ok j avais un probleme de block surface qui etait pas bon
+
+mtnt je sais que ces sommes sont ok: comparer avec mon accumulator
+ATTENTION : FAUT SAUVEGARDER LA SOMME AVANT D ACCUMULER SINON ON COMPTE 2 FOIS LES TRUCS !!! 
+
+--> sauvegarder dans Xj pour k=0 */
 
 
 
 
-    carfeull: not a power of 2
 
+    // ~~~~~~~~~~~~~~~~~~~ attractive forces : aggregate ~~~~~~~~~~~~~~~~~~~
+    
+    /* 
+    while(stride > 32u){
+        if((k + stride < prev_len)){
+            #pragma unroll
+            for(uint32_t m = 0u; m < Mld; m++){
+                momenta_update_i_T[m*block_surface] += momenta_update_i_T[m*block_surface + stride];
+            }
+        }
+        __syncthreads(); 
+        if(stride == 1u){break;}
+        prev_len = stride;
+        stride   = (uint32_t) ceilf((float)prev_len / 2.0f);
+        __syncthreads(); 
+    }
+    __syncthreads(); 
+    // one warp remaining
+    if(k + stride < prev_len){
+        warpReduce_float_Mdim(momenta_update_i_T, k, prev_len, stride, block_surface);
+    } */
+    __syncthreads();
+    
 
-    /*
+    
     // ~~~~~~~~~~~~~~~~~~~ repulsive forces ~~~~~~~~~~~~~~~~~~~
     // si pas do_repulsion: faut quand meme mettre des 0 sinon le calcul de la somme des moments est fausse
     // bool do_repulsion = ... ;
-     */
+     
+
+    // ~~~~~~~~~~~~~~~~~~~ save Qdenom_element ~~~~~~~~~~~~~~~~~~~
 
 
 
