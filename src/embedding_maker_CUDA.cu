@@ -72,8 +72,8 @@ __device__ __forceinline__ void periodic_sumReduction_on_matrix(float* matrix, u
     }
     // one warp remaining: no need to sync anymore (volatile float* matrix prevents reordering)
     if(e + stride < prev_len){ 
-        warpReduce_periodic_sumReduction_on_matrix(matrix, e, prev_len, stride, Ncol);
-    }
+        warpReduce_periodic_sumReduction_on_matrix(matrix, e, prev_len, stride, Ncol);}
+    __syncthreads(); // this one is not necessary
 }
 
 /*
@@ -117,9 +117,9 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
     Ni*Mld floats, contain for each distinct i, the Xi vector
     block_surface * (4u*Mld) floats, transposed. Contains the individual updates to momenta for attraction and repulsion for each thread, both for i and j*/
     extern __shared__ float smem[];
-    float* Xi                   = &smem[Ni*(2u*Mld) + (i - i0) * Mld];
-    float* momenta_update_i_T   = &smem[Ni*(3u*Mld) + tid];  // stride for changing m: block_surface
-    float* momenta_update_j_T   = &momenta_update_i_T[block_surface * Mld]; // stride for changing m: block_surface
+    float* Xi                   = &smem[(i - i0) * Mld];
+    float* momenta_update_i_T   = &smem[Ni*Mld + tid];  // stride for changing m: block_surface
+    float* momenta_update_j_T   = &smem[Ni*Mld + block_surface*Mld + tid]; // stride for changing m: block_surface
     if(k == 0){ // fetch Xi from DRAM  and  initialise aggregator
         #pragma unroll
         for (uint32_t m = 0u; m < Mld; m++) {
@@ -127,6 +127,8 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
         }
     }
     __syncthreads();
+
+    shared memory est changé: bcp plus petit maintenant
 
     // ~~~~~~~~~~~~~~~~~~~ now for some computations: prepare pij and wij ~~~~~~~~~~~~~~~~~~~
     // compute squared euclidean distance 
@@ -137,7 +139,7 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
     float wij     = cuda_cauchy_kernel(eucl_sq, alpha_cauchy); 
 
     // ~~~~~~~~~~~~~~~~~~~ save wij for Qdenom computation ~~~~~~~~~~~~~~~~~~~
-    dvc_Qdenom_elements[i * Khd + k] = wij; // HD kernel : offset = 0   ( N_elements_of_Qdenom = N * (Khd + Kld + NB_RANDOM_POINTS_FAR_REPULSION);)
+    dvc_Qdenom_elements[0u + (i * Khd + k)] = wij; // HD kernel : offset = 0   ( N_elements_of_Qdenom = N * (Khd + Kld + NB_RANDOM_POINTS_FAR_REPULSION);)
 
     // ~~~~~~~~~~~~~~~~~~~ attractive forces: independant gradients ~~~~~~~~~~~~~~~~~~~
     // individual updates to momenta for attraction
@@ -155,14 +157,12 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
     if(k == 0u){
         #pragma unroll
         for(uint32_t m = 0u; m < Mld; m++){
-            atomicAdd(&dvc_momenta_attraction[i * Mld + m], momenta_update_i_T[m*block_surface]);
-        }
+            atomicAdd(&dvc_momenta_attraction[i * Mld + m], momenta_update_i_T[m*block_surface]);}
     }
     // write individual updates to j attraction momenta
     #pragma unroll
     for(uint32_t m = 0u; m < Mld; m++){
-        atomicAdd(&dvc_momenta_attraction[j * Mld + m], momenta_update_j_T[m*block_surface]);
-    }
+        atomicAdd(&dvc_momenta_attraction[j * Mld + m], momenta_update_j_T[m*block_surface]);}
 
     // ~~~~~~~~~~~~~~~~~~~ repulsive forces ~~~~~~~~~~~~~~~~~~~
     // individual updates to momenta for repulsion
@@ -185,9 +185,9 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
     }
     // aggregate the individual updates
     periodic_sumReduction_on_matrix(momenta_update_i_T, Mld, block_surface, Khd, k);
-    // TODO: write to the repulsion momentum
+    TODO: write to the repulsion momentum
 
-
+    ensuite vite fait tester la somme
 
     // si pas do_repulsion: faut quand meme mettre des 0 sinon le calcul de la somme des moments est fausse
     // bool do_repulsion = ... ;
