@@ -77,31 +77,121 @@ __device__ __forceinline__ void periodic_sumReduction_on_matrix(float* matrix, u
 }
 
 /*
+visual representation of shared memory:
+        |[----- Mld -----]|    each row contains Xi
+        |        .        |                                           <----   this first block is of height Ni and width Mld
+        |        .        |
+        |[----- Mld -----]|
+        --------------------------------------
+        | M | M | M | M | ... | M | M | M | M |    
+        | l | l | l | l | ... | l | l | l | l |    momentum for i (m1)
+        | d | d | d | d | ... | d | d | d | d |        
+        --------------------------------------                        <----  this second block is of height 2Mld and width block_surface (= Ni*N_RAND)
+        | M | M | M | M | ... | M | M | M | M |    
+        | l | l | l | l | ... | l | l | l | l |    momentum updates for j
+        | d | d | d | d | ... | d | d | d | d |    
+        --------------------------------------
+ */
+__global__ void interactions_far(uint32_t N, float* dvc_Xld_nester, float Qdenom_EMA,\
+        float alpha_cauchy, double* dvc_Qdenom_elements, float* dvc_momenta_repulsion_far){
+    // ~~~~~~~~~~~~~~~~~~~ get i, k and j ~~~~~~~~~~~~~~~~~~~
+
+    // ~~~~~~~~~~~~~~~~~~~ Initialise registers: Xj ~~~~~~~~~~~~~~~~~~~
+
+    // ~~~~~~~~~~~~~~~~~~~ Initialise shared memory ~~~~~~~~~~~~~~~~~~~
+
+    // ~~~~~~~~~~~~~~~~~~~ now for some computations:  wij ~~~~~~~~~~~~~~~~~~~
+
+    // ~~~~~~~~~~~~~~~~~~~ save wij for Qdenom computation (offset is already done) ~~~~~~~~~~~~~~~~~~~
+
+    // ~~~~~~~~~~~~~~~~~~~ repulsive forces far ~~~~~~~~~~~~~~~~~~~
+    // DO NOT APPLY MOMENTA ON j, ONLY i (because else we don't have a guaranteed balance on the forces)
+
+    // ~~~~~~~~~~~~~~~~~~~ save the new seed for next iteration ~~~~~~~~~~~~~~~~~~~
+
+
+    return;
+}
+
+
+
+
+/* visual representation of shared memory:
+        |[----- Mld -----]|    each row contains Xi
+        |        .        |                                           <----   this first block is of height Ni and width Mld
+        |        .        |
+        |[----- Mld -----]|
+        --------------------------------------
+        | M | M | M | M | ... | M | M | M | M |    
+        | l | l | l | l | ... | l | l | l | l |    momentum for i (m1)
+        | d | d | d | d | ... | d | d | d | d |        
+        --------------------------------------                        <----  this second block is of height 2Mld and width block_surface (= Ni*Kld)
+        | M | M | M | M | ... | M | M | M | M |    
+        | l | l | l | l | ... | l | l | l | l |    momentum updates for j
+        | d | d | d | d | ... | d | d | d | d |    
+        --------------------------------------
+  for this 2nd block, each thread is a column (block_surface columns in total, (ie: Ni*Kld columns))
+  each row of the second block is organised as such:
+        |i0,k0| i0,k1 | i0,k2 | ... | i0,k(Kld-1) | i1,k0 | i1,k1 | i1,k2 | ... | i1,k(Kld-1) | ... | i(Ni-1),k(Kld-1)|
+*/
+
+__global__ void interactions_K_LD(uint32_t N, float* dvc_Xld_nester, uint32_t* dvc_neighsLD, float Qdenom_EMA,\
+        float alpha_cauchy, double* dvc_Qdenom_elements, float* dvc_momenta_repulsion, float* all_neighdists_LD){
+    // ~~~~~~~~~~~~~~~~~~~ get i, k and j ~~~~~~~~~~~~~~~~~~~
+
+    // ~~~~~~~~~~~~~~~~~~~ Initialise registers: Xj ~~~~~~~~~~~~~~~~~~~
+
+    // ~~~~~~~~~~~~~~~~~~~ Initialise shared memory ~~~~~~~~~~~~~~~~~~~
+
+    // ~~~~~~~~~~~~~~~~~~~ now for some computations:  wij (offset already done) ~~~~~~~~~~~~~~~~~~~
+    // dvc_Qdenom_elements[(i * Kld + k)] = (double) wij;  
+
+    // ~~~~~~~~~~~~~~~~~~~ save wij for Qdenom computation ~~~~~~~~~~~~~~~~~~~
+
+    // ~~~~~~~~~~~~~~~~~~~ saved euclidean distance to all_neighdists_LD[i*Kld + k] ~~~~~~~~~~~~~~~~~~~
+
+    // ~~~~~~~~~~~~~~~~~~~ repulsive forces ~~~~~~~~~~~~~~~~~~~
+
+    return;
+}
+
+
+/*
 grid shape : 1-d with total number of threads >= N * Khd
 block shape: (Khd, Ni)
+
+/* visual representation of shared memory:
+        |[----- Mld -----]|    each row contains Xi
+        |        .        |                                           <----   this first block is of height Ni and width Mld
+        |        .        |
+        |[----- Mld -----]|
+        --------------------------------------
+        | M | M | M | M | ... | M | M | M | M |    
+        | l | l | l | l | ... | l | l | l | l |    momentum for i (m1)
+        | d | d | d | d | ... | d | d | d | d |        
+        --------------------------------------                        <----  this second block is of height 2Mld and width block_surface (= Ni*Khd)
+        | M | M | M | M | ... | M | M | M | M |    
+        | l | l | l | l | ... | l | l | l | l |    momentum updates for j
+        | d | d | d | d | ... | d | d | d | d |    
+        --------------------------------------
+  for this 2nd block, each thread is a column (block_surface columns in total, (ie: Ni*Khd columns))
+  each row of the second block is organised as such:
+        |i0,k0| i0,k1 | i0,k2 | ... | i0,k(Khd-1) | i1,k0 | i1,k1 | i1,k2 | ... | i1,k(Khd-1) | ... | i(Ni-1),k(Khd-1)|
 */
 __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nester,\
         uint32_t* dvc_neighsHD, float* furthest_neighdists_LD, float Qdenom_EMA,\
         float alpha_cauchy, double* dvc_Qdenom_elements, float* dvc_momenta_attraction,\
         float* dvc_momenta_repulsion){
-    
-    
-    
-    
-    printf("revoir tous les indices car changement dans la forme de smem!!\n");
-    printf("ensiute il faudra finir d ecrire en global memeory\n");
-    printf("et ensuite un dernier check sur la réduction somme GT vs parallel\n");
-
     // ~~~~~~~~~~~~~~~~~~~ get i, k and j ~~~~~~~~~~~~~~~~~~~
-    uint32_t Khd           = blockDim.x; // Khd is guaranteed to be >= 32u
-    uint32_t Ni            = blockDim.y;
+    uint32_t Khd           = blockDim.x; // block shape: (Khd, Ni);  Khd is guaranteed to be >= 32u
+    uint32_t Ni            = blockDim.y; // block shape: (Khd, Ni)
     uint32_t block_surface = blockDim.x * blockDim.y;
     uint32_t i0            = (block_surface * blockIdx.x) / Khd; // the value of the smallest i in the block
+    uint32_t k             = threadIdx.x;
     uint32_t i             = i0 + threadIdx.y;
     if( i >= N ){return;} // out of bounds (no guarantee that N is a multiple of Ni)
-    uint32_t k             = threadIdx.x;
     uint32_t j             = dvc_neighsHD[i * Khd + k]; 
-    uint32_t tid           = threadIdx.x + threadIdx.y * Khd;
+    uint32_t tid           = threadIdx.x + threadIdx.y * Khd; // index within the block
 
     // ~~~~~~~~~~~~~~~~~~~ Initialise registers: Xj and furthest LDneighdists for i and j ~~~~~~~~~~~~~~~~~~~
     float furthest_LDneighdist_j = __ldg(&furthest_neighdists_LD[j]);
@@ -112,23 +202,16 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
     float furthest_LDneighdist_i = __ldg(&furthest_neighdists_LD[i]);
 
     // ~~~~~~~~~~~~~~~~~~~ Initialise shared memory ~~~~~~~~~~~~~~~~~~~
-    /*shared memory can be divided into 3 blocks:
-    Ni*(2u*Mld) floats, contain for each distinct i, the aggregated update to momenta vectors for attraction and repulsion
-    Ni*Mld floats, contain for each distinct i, the Xi vector
-    block_surface * (4u*Mld) floats, transposed. Contains the individual updates to momenta for attraction and repulsion for each thread, both for i and j*/
     extern __shared__ float smem[];
     float* Xi                   = &smem[(i - i0) * Mld];
     float* momenta_update_i_T   = &smem[Ni*Mld + tid];  // stride for changing m: block_surface
     float* momenta_update_j_T   = &smem[Ni*Mld + block_surface*Mld + tid]; // stride for changing m: block_surface
-    if(k == 0){ // fetch Xi from DRAM  and  initialise aggregator
+    if(k == 0){ // fetch Xi from DRAM
         #pragma unroll
         for (uint32_t m = 0u; m < Mld; m++) {
-            Xi[m] = dvc_Xld_nester[i * Mld + m];
-        }
+            Xi[m] = dvc_Xld_nester[i * Mld + m];}
     }
     __syncthreads();
-
-    shared memory est changé: bcp plus petit maintenant
 
     // ~~~~~~~~~~~~~~~~~~~ now for some computations: prepare pij and wij ~~~~~~~~~~~~~~~~~~~
     // compute squared euclidean distance 
@@ -139,9 +222,9 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
     float wij     = cuda_cauchy_kernel(eucl_sq, alpha_cauchy); 
 
     // ~~~~~~~~~~~~~~~~~~~ save wij for Qdenom computation ~~~~~~~~~~~~~~~~~~~
-    dvc_Qdenom_elements[0u + (i * Khd + k)] = wij; // HD kernel : offset = 0   ( N_elements_of_Qdenom = N * (Khd + Kld + NB_RANDOM_POINTS_FAR_REPULSION);)
+    dvc_Qdenom_elements[(i * Khd + k)] = (double) wij; 
 
-    // ~~~~~~~~~~~~~~~~~~~ attractive forces: independant gradients ~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~ attractive forces ~~~~~~~~~~~~~~~~~~~
     // individual updates to momenta for attraction
     float powerthing = 2.0f * powf(wij, 1.0f / alpha_cauchy);
     float common_attraction_gradient_multiplier =  pij * powerthing;
@@ -185,99 +268,72 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
     }
     // aggregate the individual updates
     periodic_sumReduction_on_matrix(momenta_update_i_T, Mld, block_surface, Khd, k);
-    TODO: write to the repulsion momentum
-
-    ensuite vite fait tester la somme
-
-    // si pas do_repulsion: faut quand meme mettre des 0 sinon le calcul de la somme des moments est fausse
-    // bool do_repulsion = ... ;
-     /* 
-    
-    // probleme: mon parallel reduction utiliser des vecteurs de taille variable
-
-
-    // atomic agregation of the momenta
-    // i : on attrac_momenta_aggregator_i
-    for(uint32_t m = 0; m < Mld; m++){
-        atomicAdd(&attrac_momenta_aggregator_i[m], attrac_momentum_update_i_T[m * blockDim.x]);}
-    
-    // j : directly to global memory
-    for(uint32_t m = 0; m < Mld; m++){
-        atomicAdd(&dvc_momenta_attraction[j * Mld + m], attrac_momentum_update_j_T[m * blockDim.x]);}
-
-    // ~~~~~~~~~~~~~~~~~~~ repulsive forces ~~~~~~~~~~~~~~~~~~~
-    // si pas do_repulsion: faut quand meme mettre des 0 sinon le calcul de la somme des moments est fausse
-    // bool do_repulsion = ... ; */
-    return;
-
-/* 
-    // atomic add momenta
-
-
-    // prepare repulsion index
-    // smem_idx0 += 2u * Mld;
-    // if j is NOT part of i's LD_neighs, and i is not part of j's LD_neighs, then do repulsive forces
-    bool do_repulsion = eucl_sq > reg_furthest_neighdist_LD_i && eucl_sq > reg_furthest_neighdist_LD_j;
-    if(do_repulsion){
-        // update the momenta resulting from repulsive forces
-        float common_gradient_multiplier = 2.0f * (wij / Qdenom_EMA) * powf(wij, 1.0f / alpha_cauchy);
+    // write to global memory for point i
+    if(k == 0u){
         #pragma unroll
-        for(uint32_t m = 0; m < Mld; m++){
-            float gradient = (reg_Xi[m] - reg_Xj[m]) * common_gradient_multiplier;
-            // repulsion (i movement)
-            smem[smem_idx0 + m]       = gradient;
-            // repulsion (j movement)
-            smem[smem_idx0 + Mld + m] = -gradient;
-        } 
-       // atomic add momenta
+        for(uint32_t m = 0u; m < Mld; m++){
+            atomicAdd(&dvc_momenta_repulsion[i * Mld + m], momenta_update_i_T[m*block_surface]);}
     }
-    
-
-    // save 2d kernel value 
-
-    // save euclidean value
-
-    // attraction: always 
-    
-    // dont forget synthreads before writing to global memory
-
-    if(i == N-1)
-        printf("Thread %d: i = %d, k = %d   (Khd %u   Mld: %u)  j: %u   eucl %f and simi: %f  (wij %f) \n", threadIdx.x, i, k, Khd, Mld, j, eucl_sq, wij / Qdenom_EMA, wij); 
-    */
+    // write individual updates to j repulsion momenta
+    #pragma unroll
+    for(uint32_t m = 0u; m < Mld; m++){
+        atomicAdd(&dvc_momenta_repulsion[j * Mld + m], momenta_update_j_T[m*block_surface]);}
 }
 
-void fill_raw_momenta_launch_cuda(cudaStream_t stream_HD, cudaStream_t stream_LD, cudaStream_t stream_rand,\
-     uint32_t* Kern_HD_blockshape, uint32_t* Kern_HD_gridshape, uint32_t N, uint32_t Khd, float* dvc_Pij,\
-      float* dvc_Xld_nester, uint32_t* dvc_neighsHD, float* furthest_neighdists_LD, float Qdenom_EMA,\
+void fill_raw_momenta_launch_cuda(cudaStream_t stream_HD, cudaStream_t stream_LD, cudaStream_t stream_FAR,\
+     uint32_t* Kern_HD_blockshape, uint32_t* Kern_HD_gridshape,uint32_t* Kern_LD_blockshape, uint32_t* Kern_LD_gridshape,uint32_t* Kern_FAR_blockshape, uint32_t* Kern_FAR_gridshape,\
+      uint32_t N, uint32_t Khd, float* dvc_Pij,\
+      float* dvc_Xld_nester, uint32_t* dvc_neighsHD, uint32_t* dvc_neighsLD, float* furthest_neighdists_LD, float Qdenom_EMA,\
        float alpha_cauchy, double* dvc_Qdenom_elements,\
-        float* dvc_momenta_attraction, float* dvc_momenta_repulsion, float* dvc_momenta_repulsion_far){
+        float* dvc_momenta_attraction, float* dvc_momenta_repulsion, float* dvc_momenta_repulsion_far, float* all_neighdists_LD, uint32_t* random_numbers_size_NxRand){
     
     // ~~~~~~~~~  clear momenta (async)  ~~~~~~~~~
     cudaMemsetAsync(dvc_momenta_attraction, 0, N * Mld * sizeof(float), stream_HD);
     cudaMemsetAsync(dvc_momenta_repulsion, 0, N * Mld * sizeof(float), stream_LD);
-    cudaMemsetAsync(dvc_momenta_repulsion_far, 0, N * Mld * sizeof(float), stream_rand);
+    cudaMemsetAsync(dvc_momenta_repulsion_far, 0, N * Mld * sizeof(float), stream_FAR);
 
     // ~~~~~~~~~  prepare kernel calls ~~~~~~~~~
     // Kernel 1: HD neighbours
     uint32_t Kern_HD_block_surface = Kern_HD_blockshape[0] * Kern_HD_blockshape[1]; // N threads per block
-    if((Kern_HD_block_surface % 32) != 0){printf("\n\nError: block size must be a multiple of 32\n");return;}
+    // if((Kern_HD_block_surface % 32) != 0){printf("\n\nError: block size should be a multiple of 32\n");return;}
     uint32_t Kern_HD_sharedMemorySize = (uint32_t) (sizeof(float) * ((Kern_HD_blockshape[1] * Mld) + (Kern_HD_block_surface * (2u * Mld))));
     dim3 Kern_HD_grid(Kern_HD_gridshape[0], Kern_HD_gridshape[1]);
     dim3 Kern_HD_block(Kern_HD_blockshape[0], Kern_HD_blockshape[1]);
     // Kernel 2: LD neighbours
+    uint32_t Kern_LD_block_surface = Kern_LD_blockshape[0] * Kern_LD_blockshape[1]; // N threads per block
+    uint32_t Kern_LD_sharedMemorySize = (uint32_t) (sizeof(float) * ((Kern_LD_blockshape[1] * Mld) + (Kern_LD_block_surface * (2u * Mld)));
+    dim3 Kern_LD_grid(Kern_LD_gridshape[0], Kern_LD_gridshape[1]);
+    dim3 Kern_LD_block(Kern_LD_blockshape[0], Kern_LD_blockshape[1]);
+    // Kernel 3: FAR neighbours
+    uint32_t Kern_FAR_block_surface = Kern_FAR_blockshape[0] * Kern_FAR_blockshape[1]; // N threads per block
+    uint32_t Kern_FAR_sharedMemorySize = (uint32_t) (sizeof(float) * ((Kern_FAR_blockshape[1] * Mld) + (Kern_FAR_block_surface * (2u * Mld)));
+    dim3 Kern_FAR_grid(Kern_FAR_gridshape[0], Kern_FAR_gridshape[1]);
+    dim3 Kern_FAR_block(Kern_FAR_blockshape[0], Kern_FAR_blockshape[1]);
 
     
     // ~~~~~~~~~  launch kernels (and wait for async memset to finish)  ~~~~~~~~~
     // kernel 1 : HD neighbours
-    printf("kernel gid shape %u %u %u      block shape %u %u %u\n", Kern_HD_grid.x, Kern_HD_grid.y, Kern_HD_grid.z, Kern_HD_block.x, Kern_HD_block.y, Kern_HD_block.z);
     cudaStreamSynchronize(stream_HD); // wait for the momenta to clear
     interactions_K_HD<<<Kern_HD_grid, Kern_HD_block, Kern_HD_sharedMemorySize, stream_HD>>>(N, dvc_Pij, dvc_Xld_nester, dvc_neighsHD, furthest_neighdists_LD, Qdenom_EMA, alpha_cauchy, dvc_Qdenom_elements, dvc_momenta_attraction, dvc_momenta_repulsion);// launch the kernel 1
-    
-
-
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {printf("Error in kernel 1: %s\n", cudaGetErrorString(err));}
+    // kernel 2 : LD neighbours
+    cudaStreamSynchronize(stream_LD); // wait for the momenta to clear
+    interactions_K_LD<<<Kern_LD_grid, Kern_LD_block, Kern_LD_sharedMemorySize, stream_LD>>>\
+    (N, dvc_Xld_nester, dvc_neighsLD, Qdenom_EMA, alpha_cauchy, &dvc_Qdenom_elements[N*Khd], dvc_momenta_repulsion, all_neighdists_LD);// launch the kernel 2
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {printf("Error in kernel 2: %s\n", cudaGetErrorString(err));}
+    // kernel 3 : FAR neighbours
+    cudaStreamSynchronize(stream_FAR); // wait for the momenta to clear
+    interactions_far<<<Kern_FAR_grid, Kern_FAR_block, Kern_FAR_sharedMemorySize, stream_FAR>>>\
+    (N, dvc_Xld_nester, Qdenom_EMA, alpha_cauchy, &dvc_Qdenom_elements[N*Khd + N*Kld], dvc_momenta_repulsion_far);// launch the kernel 3
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {printf("Error in kernel 3: %s\n", cudaGetErrorString(err));}
 
     // ~~~~~~~~~~~  sync all streams  ~~~~~~~~~
     cudaStreamSynchronize(stream_HD);
+    cudaStreamSynchronize(stream_LD);
+    cudaStreamSynchronize(stream_FAR);
    
     // TODO: ascend to godhood by using pretch CUDA instruction in assembly (Fermi architecture)
     // the prefetch instruction is used to load the data from global memory to the L2 cache

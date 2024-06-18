@@ -134,9 +134,10 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     // smem memory constraint : smem_N_floats < smem_pct_target_occupancy * smem_max_N_floats
     // registers_N_floats          : (Ni*Khd) * (kern1_estimated_regs + Mld)
     // registers memory constraint : registers_N_floats < 0.75 * reg_max_N_floats
+    // threads per block contraint : prop.maxThreadsPerBlock
     thing->Kern_HD_gridshape  = malloc_uint32_t(3, 1u);
     thing->Kern_HD_blockshape = malloc_uint32_t(3, 1u);
-    uint32_t kern1_estimated_regs = 30u; // find a good value for this
+    uint32_t kern1_estimated_regs = 24u; // find a good value for this
     uint32_t kern1_Ni = 1u;
     while (true) {
         uint32_t next_smem_N_floats = (kern1_Ni + 1) * (Mld) + ((kern1_Ni + 1) * Khd) * (2u * Mld);
@@ -144,7 +145,8 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
         bool next_blocksize_ok = (kern1_Ni + 1) < (uint32_t) prop.maxThreadsDim[1]; // for 2nd dimension (first dim is fixed to Khd)
         bool next_reg_ok  = next_reg_N_floats  <= target_n_floats_regs;
         bool next_smem_ok = next_smem_N_floats <= target_n_floats_smem;
-        if(!next_smem_ok || !next_reg_ok || !next_blocksize_ok){
+        bool maxthreads_ok = (kern1_Ni + 1) * Khd <= (uint32_t) prop.maxThreadsPerBlock;
+        if(!next_smem_ok || !next_reg_ok || !next_blocksize_ok || !maxthreads_ok){
             break;}
         kern1_Ni++;
     }
@@ -158,12 +160,80 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
 
     printf("block shapes for kernel 1: (%u, %u)\n", Khd, kern1_Ni);
     printf("memory usage and maxima for kernel 1: smem_N_floats, target_n_floats_smem, reg_N_floats, reg_max_N_floats %u %u %u %u\n", smem_N_floats, target_n_floats_smem, reg_N_floats, reg_max_N_floats);
-    
+    printf("number of threads per block: %u\n", Khd* kern1_Ni);
     thing->Kern_HD_blockshape[0] = Khd;
     thing->Kern_HD_blockshape[1] = kern1_Ni; // Ni!
     thing->Kern_HD_blockshape[2] = 1u;
     thing->Kern_HD_gridshape[0]  = (N*Khd + (Khd * kern1_Ni) - 1u) / (Khd * kern1_Ni);
     
+    // ~~~~~~~~~  Kernel 2: LD neighbours, determining block size and grid shape  ~~~~~~~~~
+    // grid 1d ; block 2d : (Kld, Ni)
+    // smem_N_floats          : Ni * Mld   +  (Ni*Kld)*(2u*Mld)
+    // registers_N_floats          : (Ni*Kld) * (kern1_estimated_regs + Mld)
+    thing->Kern_LD_gridshape  = malloc_uint32_t(3, 1u);
+    thing->Kern_LD_blockshape = malloc_uint32_t(3, 1u);
+    uint32_t kern2_estimated_regs = 24u;
+    uint32_t Kern2_Ni = 1u;
+    while (true) {
+        uint32_t next_smem_N_floats = (Kern2_Ni + 1) * (Mld) + ((Kern2_Ni + 1) * Kld) * (2u * Mld);
+        uint32_t next_reg_N_floats  = ((Kern2_Ni + 1) * Kld) * (kern2_estimated_regs + Mld);
+        bool next_blocksize_ok = (Kern2_Ni + 1) < (uint32_t) prop.maxThreadsDim[1]; // for 2nd dimension (first dim is fixed to Kld)
+        bool next_reg_ok  = next_reg_N_floats  <= target_n_floats_regs;
+        bool next_smem_ok = next_smem_N_floats <= target_n_floats_smem;
+        bool maxthreads_ok = (Kern2_Ni + 1) * Kld <= (uint32_t) prop.maxThreadsPerBlock;
+        if(!next_smem_ok || !next_reg_ok || !next_blocksize_ok || !maxthreads_ok){
+            break;}
+        Kern2_Ni++;
+    }
+    uint32_t smem_N_floats_Kern2 = Kern2_Ni * Mld + (Kern2_Ni * Kld) * (2u * Mld);
+    uint32_t reg_N_floats_Kern2  = (Kern2_Ni * Kld) * (kern2_estimated_regs + Mld);
+    bool reg_ok_Kern2  = reg_N_floats_Kern2 < 0.75 * reg_max_N_floats;
+    bool smem_ok_Kern2 = smem_N_floats_Kern2 < target_n_floats_smem;
+    bool blocksize_ok_Kern2 = (Kern2_Ni) < (uint32_t) prop.maxThreadsDim[1];
+    if(!reg_ok_Kern2 || !smem_ok_Kern2 || !blocksize_ok_Kern2){
+        dying_breath("could not find a suitable block size for the kernel 2");}
+    printf("block shapes for kernel 2: (%u, %u)\n", Kld, Kern2_Ni);
+    printf("memory usage and maxima for kernel 2: smem_N_floats, target_n_floats_smem, reg_N_floats, reg_max_N_floats %u %u %u %u\n", smem_N_floats_Kern2, target_n_floats_smem, reg_N_floats_Kern2, reg_max_N_floats);
+    printf("number of threads per block: %u\n", Kld* Kern2_Ni);
+    thing->Kern_LD_blockshape[0] = Kld;
+    thing->Kern_LD_blockshape[1] = Kern2_Ni; // Ni!
+    thing->Kern_LD_blockshape[2] = 1u;
+    thing->Kern_LD_gridshape[0]  = (N*Kld + (Kld * Kern2_Ni) - 1u) / (Kld * Kern2_Ni);
+
+
+    // ~~~~~~~~~  Kernel 3: random far repulsion, determining block size and grid shape  ~~~~~~~~~
+    // grid 1d ; block 2d : (NB_RANDOM_POINTS_FAR_REPULSION, Ni)
+    // smem_N_floats          : Ni * Mld   +  (Ni*NB_RANDOM_POINTS_FAR_REPULSION)*(2u*Mld)
+    // registers_N_floats          : (Ni*NB_RANDOM_POINTS_FAR_REPULSION) * (kern1_estimated_regs + Mld)
+    thing->Kern_FAR_gridshape  = malloc_uint32_t(3, 1u);
+    thing->Kern_FAR_blockshape = malloc_uint32_t(3, 1u);
+    uint32_t kern3_estimated_regs = 24u;
+    uint32_t Kern3_Ni = 1u;
+    while (true) {
+        uint32_t next_smem_N_floats = (Kern3_Ni + 1) * (Mld) + ((Kern3_Ni + 1) * NB_RANDOM_POINTS_FAR_REPULSION) * (2u * Mld);
+        uint32_t next_reg_N_floats  = ((Kern3_Ni + 1) * NB_RANDOM_POINTS_FAR_REPULSION) * (kern3_estimated_regs + Mld);
+        bool next_blocksize_ok = (Kern3_Ni + 1) < (uint32_t) prop.maxThreadsDim[1]; // for 2nd dimension (first dim is fixed to NB_RANDOM_POINTS_FAR_REPULSION)
+        bool next_reg_ok  = next_reg_N_floats  <= target_n_floats_regs;
+        bool next_smem_ok = next_smem_N_floats <= target_n_floats_smem;
+        bool maxthreads_ok = (Kern3_Ni + 1) * NB_RANDOM_POINTS_FAR_REPULSION <= (uint32_t) prop.maxThreadsPerBlock;
+        if(!next_smem_ok || !next_reg_ok || !next_blocksize_ok || !maxthreads_ok){
+            break;}
+        Kern3_Ni++;
+    }
+    uint32_t smem_N_floats_Kern3 = Kern3_Ni * Mld + (Kern3_Ni * NB_RANDOM_POINTS_FAR_REPULSION) * (2u * Mld);
+    uint32_t reg_N_floats_Kern3  = (Kern3_Ni * NB_RANDOM_POINTS_FAR_REPULSION) * (kern3_estimated_regs + Mld);
+    bool reg_ok_Kern3  = reg_N_floats_Kern3 < 0.75 * reg_max_N_floats;
+    bool smem_ok_Kern3 = smem_N_floats_Kern3 < target_n_floats_smem;
+    bool blocksize_ok_Kern3 = (Kern3_Ni) < (uint32_t) prop.maxThreadsDim[1];
+    if(!reg_ok_Kern3 || !smem_ok_Kern3 || !blocksize_ok_Kern3){
+        dying_breath("could not find a suitable block size for the kernel 3");}
+    printf("block shapes for kernel 3: (%u, %u)\n", NB_RANDOM_POINTS_FAR_REPULSION, Kern3_Ni);
+    printf("memory usage and maxima for kernel 3: smem_N_floats, target_n_floats_smem, reg_N_floats, reg_max_N_floats %u %u %u %u\n", smem_N_floats_Kern3, target_n_floats_smem, reg_N_floats_Kern3, reg_max_N_floats);
+    printf("number of threads per block: %u\n", NB_RANDOM_POINTS_FAR_REPULSION * Kern3_Ni);
+    thing->Kern_FAR_blockshape[0] = NB_RANDOM_POINTS_FAR_REPULSION;
+    thing->Kern_FAR_blockshape[1] = Kern3_Ni; // Ni!
+    thing->Kern_FAR_blockshape[2] = 1u;
+    thing->Kern_FAR_gridshape[0]  = (N*NB_RANDOM_POINTS_FAR_REPULSION + (NB_RANDOM_POINTS_FAR_REPULSION * Kern3_Ni) - 1u) / (NB_RANDOM_POINTS_FAR_REPULSION * Kern3_Ni);
 
 }
 
@@ -176,11 +246,12 @@ void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing){
     pthread_mutex_unlock(thing->mutex_hparam_LDkernel_alpha);
 
     fill_raw_momenta_launch_cuda(thing->stream_K_HD, thing->stream_K_LD, thing->stream_rand,\
-        thing->Kern_HD_blockshape, thing->Kern_HD_gridshape, thing->N, thing->Khd, thing->P_cuda,\
-         thing->Xld_nesterov_cuda, thing->neighsHD_cuda, thing->furthest_neighdists_LD_cuda, thing->Qdenom_EMA,\
+        thing->Kern_HD_blockshape, thing->Kern_HD_gridshape, thing->Kern_LD_blockshape, thing->Kern_LD_gridshape, thing->Kern_FAR_blockshape, thing->Kern_FAR_gridshape,\
+         thing->N, thing->Khd, thing->P_cuda,\
+         thing->Xld_nesterov_cuda, thing->neighsHD_cuda, thing->neighsLD_cuda, thing->furthest_neighdists_LD_cuda, thing->Qdenom_EMA,\
           cauchy_alpha, thing->elements_of_Qdenom_cuda,\
-           thing->momenta_attraction_cuda, thing->momenta_repulsion_far_cuda, thing->momenta_repulsion_far_cuda);
-    die();
+           thing->momenta_attraction_cuda, thing->momenta_repulsion_cuda, thing->momenta_repulsion_far_cuda, thing->all_neighdists_LD_cuda, thing->random_numbers_size_NxRand_cuda);
+    dying_breath("------------ done here -------------");
 }
 
 // momentum leak: momenta_repulsion_far gets smoothed across neighbours (with conservation of vector norm)
@@ -188,8 +259,6 @@ void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing){
 void momenta_leak_GPU(EmbeddingMaker_GPU* thing){
 
 }
-
-
 
 
 // apply momenta to Xld, regenerate Xld_nesterov, decay momenta

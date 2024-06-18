@@ -17,19 +17,10 @@ using define is very very stupid
 #define USE_GPU true
 
 // number of neighs to consider in LD
-#define Kld 10u
+#define Kld 16u  
 
 // target dimensionality of the embedding
 #define Mld 2u
-
-// prefetching distance for the GPU
-#define GPU_PREFETCH_DIST 12
-// padding for the shared memory in the GPU: such that (GPU_PREFETCH_DIST + GPU_PADDING) = (2^k + 1)
-#define GPU_PADDING 5 // manually set, or else it is not known at compile time
-/* // block size for the GPU (multiple of 32)
-#define GPU_BLOCK_SIZE_X 32*16   
-^dilemma : known at compile time = optimisations but less flexibility for the non-programmer pleb
-*/
 
 // a global epsilon for floating points equal to 1e-16
 #define FLOAT_EPS 1e-12f
@@ -43,7 +34,7 @@ using define is very very stupid
 // speed at which the Q denominator is updated
 #define ALPHA_QDENOM (0.95f + ((1.f - 0.95f) * (1.f - SUBTHREADS_CHUNK_SIZE_PCT)))
 
-#define NB_RANDOM_POINTS_FAR_REPULSION 16u // was 32u in original prototype
+#define NB_RANDOM_POINTS_FAR_REPULSION 32u // was 32u in original prototype
 
 // the number of random points randomly sampled during neighbour discovery, on all the dataset
 #define NEIGH_FAR_EXPLORATION_N_SAMPLES      142u

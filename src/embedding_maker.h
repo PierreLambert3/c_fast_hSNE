@@ -41,6 +41,10 @@ typedef struct {
     // GPU kernel, number of floats un shared memory per thread
     uint32_t* Kern_HD_gridshape;  // 3d array
     uint32_t* Kern_HD_blockshape; // 3d array
+    uint32_t* Kern_LD_gridshape;  // 3d array
+    uint32_t* Kern_LD_blockshape; // 3d array
+    uint32_t* Kern_FAR_gridshape;  // 3d array
+    uint32_t* Kern_FAR_blockshape; // 3d array
 
     // streams
     cudaStream_t stream_K_HD;
@@ -92,5 +96,9 @@ void momenta_leak_GPU(EmbeddingMaker_GPU* thing);
 void apply_momenta_and_decay_GPU(EmbeddingMaker_GPU* thing);
 
 void fill_raw_momenta_launch_cuda(cudaStream_t, cudaStream_t, cudaStream_t,\
- uint32_t*, uint32_t*, uint32_t, uint32_t, float*, float*, uint32_t*, float*, float, float, double*, float*, float*, float*);
+ uint32_t*, uint32_t*,uint32_t*, uint32_t*,uint32_t*, uint32_t*,\
+  uint32_t, uint32_t, float*,\
+   float*, uint32_t*, uint32_t*, float*, float,\
+    float, double*,\
+     float*, float*, float*, float*, uint32_t*);
 #endif // EMBEDDING_MAKER_H
