@@ -59,8 +59,8 @@ typedef struct {
     float*          momenta_repulsion_cuda;
     uint32_t*       neighsLD_cuda;
     uint32_t*       neighsHD_cuda;
-    float*          all_neighdists_LD_cuda; 
     float*          furthest_neighdists_LD_cuda;
+    float*          temporary_furthest_neighdists_LD_cuda;
     uint32_t*       N_elements_of_Qdenom_cuda;
     uint32_t*       random_numbers_size_NxRand_cuda;
     double*         elements_of_Qdenom_cuda; // will be on GPU as a 1d-array
@@ -100,5 +100,6 @@ void fill_raw_momenta_launch_cuda(cudaStream_t, cudaStream_t, cudaStream_t,\
   uint32_t, uint32_t, float*,\
    float*, uint32_t*, uint32_t*, float*, float,\
     float, double*,\
-     float*, float*, float*, float*, uint32_t*);
+     float*, float*, float*, float*,\
+      uint32_t*);
 #endif // EMBEDDING_MAKER_H

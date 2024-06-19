@@ -72,8 +72,8 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     malloc_1d_float_cuda(&thing->momenta_repulsion_cuda, N*Mld);
     malloc_1d_uint32_cuda(&thing->neighsLD_cuda, N*Kld);
     malloc_1d_uint32_cuda(&thing->neighsHD_cuda, N*Khd);
-    malloc_1d_float_cuda(&thing->all_neighdists_LD_cuda, N*Kld); 
     malloc_1d_float_cuda(&thing->furthest_neighdists_LD_cuda, N);
+    malloc_1d_float_cuda(&thing->temporary_furthest_neighdists_LD_cuda, N);
     malloc_1d_uint32_cuda(&thing->N_elements_of_Qdenom_cuda, 1);
     malloc_1d_uint32_cuda(&thing->random_numbers_size_NxRand_cuda, N*NB_RANDOM_POINTS_FAR_REPULSION);
     uint32_t N_elements_of_Qdenom = N * (Khd + Kld + NB_RANDOM_POINTS_FAR_REPULSION);
@@ -93,14 +93,13 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     cudaError_t err1 = cudaMemset(thing->momenta_attraction_cuda, 0, N*Mld*sizeof(float));
     cudaError_t err2 = cudaMemset(thing->momenta_repulsion_far_cuda, 0, N*Mld*sizeof(float));
     cudaError_t err3 = cudaMemset(thing->momenta_repulsion_cuda, 0, N*Mld*sizeof(float));
-    cudaError_t err4 = cudaMemset(thing->all_neighdists_LD_cuda, 0, N*Kld*sizeof(float));
-    if(err1 != cudaSuccess || err2 != cudaSuccess || err3 != cudaSuccess || err4 != cudaSuccess){
+    if(err1 != cudaSuccess || err2 != cudaSuccess || err3 != cudaSuccess){
         dying_breath("cudamemset error");
     }
     // fill thing->random_numbers_size_NxRand_cuda with random numbers inside [0, N[
     uint32_t* random_numbers_size_NxRand = malloc_uint32_t(N*NB_RANDOM_POINTS_FAR_REPULSION, 0u);
     for(uint32_t i = 0; i < N*NB_RANDOM_POINTS_FAR_REPULSION; i++){
-        random_numbers_size_NxRand[i] = rand_uint32_between(&thing->rand_state, 0u, N);
+        random_numbers_size_NxRand[i] = (uint32_t)rand(); // not using the shitty homemade random: else rand of i at t is the same as rand of (i+1) at (t+1)
     }
     memcpy_CPU_to_CUDA_uint32(thing->random_numbers_size_NxRand_cuda, random_numbers_size_NxRand, N*NB_RANDOM_POINTS_FAR_REPULSION);
 
@@ -250,7 +249,7 @@ void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing){
          thing->N, thing->Khd, thing->P_cuda,\
          thing->Xld_nesterov_cuda, thing->neighsHD_cuda, thing->neighsLD_cuda, thing->furthest_neighdists_LD_cuda, thing->Qdenom_EMA,\
           cauchy_alpha, thing->elements_of_Qdenom_cuda,\
-           thing->momenta_attraction_cuda, thing->momenta_repulsion_cuda, thing->momenta_repulsion_far_cuda, thing->all_neighdists_LD_cuda, thing->random_numbers_size_NxRand_cuda);
+           thing->momenta_attraction_cuda, thing->momenta_repulsion_cuda, thing->momenta_repulsion_far_cuda, thing->temporary_furthest_neighdists_LD_cuda, thing->random_numbers_size_NxRand_cuda);
     dying_breath("------------ done here -------------");
 }
 
