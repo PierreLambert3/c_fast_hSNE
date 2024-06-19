@@ -176,29 +176,50 @@ __global__ void interactions_far(uint32_t N, float* dvc_Xld_nester, float Qdenom
     uint32_t i             = i0 + threadIdx.y;  // block shape: (NB_RANDOM_POINTS_FAR_REPULSION, Ni)
     if( i >= N ){return;} // out of bounds
     uint32_t tid           = threadIdx.x + threadIdx.y * NB_RANDOM_POINTS_FAR_REPULSION; // index within the block
-    // get j using the random uint32_t
-    uint32_t random_number = random_numbers_size_NxRand[i * NB_RANDOM_POINTS_FAR_REPULSION + k];
-    uint32_t j             = random_number % N;
-
+    uint32_t j             = random_numbers_size_NxRand[i * NB_RANDOM_POINTS_FAR_REPULSION + k] % N;
 
     // ~~~~~~~~~~~~~~~~~~~ Initialise registers: Xj ~~~~~~~~~~~~~~~~~~~
+    float Xj[Mld];
+    #pragma unroll
+    for (uint32_t m = 0u; m < Mld; m++) { // fetch Xj from DRAM
+        Xj[m] = dvc_Xld_nester[j * Mld + m];}
 
     // ~~~~~~~~~~~~~~~~~~~ Initialise shared memory ~~~~~~~~~~~~~~~~~~~
+    extern __shared__ float smem[];
+    float* Xi                   = &smem[(i - i0) * Mld];
+    float* momenta_update_i_T   = &smem[Ni*Mld + tid];  // stride for changing m: block_surface
+    if(k == 0){ // fetch Xi from DRAM
+        #pragma unroll
+        for (uint32_t m = 0u; m < Mld; m++) {
+            Xi[m] = dvc_Xld_nester[i * Mld + m];}
+    }
+    __syncthreads();
 
-    // ~~~~~~~~~~~~~~~~~~~ now for some computations:  wij ~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~ now for some computations:  wij (offset already done) ~~~~~~~~~~~~~~~~~~~
+    float eucl_sq = cuda_euclidean_sq(Xi, Xj); // compute squared euclidean distance 
+    float wij     = cuda_cauchy_kernel(eucl_sq, alpha_cauchy);  // similarity in LD (qij = wij / Qdenom_EMA)
 
-    // ~~~~~~~~~~~~~~~~~~~ save wij for Qdenom computation (offset is already done) ~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~ save wij for Qdenom computation ~~~~~~~~~~~~~~~~~~~
+    dvc_Qdenom_elements[(i * NB_RANDOM_POINTS_FAR_REPULSION + k)] = (double) wij;
 
     // ~~~~~~~~~~~~~~~~~~~ repulsive forces far ~~~~~~~~~~~~~~~~~~~
     // DO NOT APPLY MOMENTA ON j, ONLY i (because else we don't have a guaranteed balance on the forces)
+    float common_repulsion_gradient_multiplier  = -(wij * __frcp_rn(Qdenom_EMA)) * (2.0f * powf(wij, __frcp_rn(alpha_cauchy)));
+    #pragma unroll
+    for(uint32_t m = 0u; m < Mld; m++){
+        momenta_update_i_T[m*block_surface] = -(Xi[m] - Xj[m]) * common_repulsion_gradient_multiplier; // i movement
+    }
+    // aggregate the individual updates
+    periodic_sumReduction_on_matrix(momenta_update_i_T, Mld, block_surface, NB_RANDOM_POINTS_FAR_REPULSION, k);
+    // write to global memory for point i
+    if(k == 0u){
+        #pragma unroll
+        for(uint32_t m = 0u; m < Mld; m++){
+            atomicAdd(&dvc_momenta_repulsion_far[i * Mld + m], momenta_update_i_T[m*block_surface]);}
+    }
 
     // ~~~~~~~~~~~~~~~~~~~ update the new seed for next iteration ~~~~~~~~~~~~~~~~~~~
     random_numbers_size_NxRand[i * NB_RANDOM_POINTS_FAR_REPULSION + k] = random_uint32_t_xorshift32(&random_numbers_size_NxRand[i * NB_RANDOM_POINTS_FAR_REPULSION + k]); // save the new random number
-    // printf("old rand: %u, new rand: %u    (i %u  k %u)\n", random_number, random_numbers_size_NxRand[i * NB_RANDOM_POINTS_FAR_REPULSION + k], i, k);
-
-
-    // FAIRE CTRL-F Kld : FAUT QUE RIEN N APPARAISSE DANS CE KERNEL
-    // printf("ok\n");
     return;
 }
 
@@ -264,10 +285,7 @@ __global__ void interactions_K_LD(uint32_t N, float* dvc_Xld_nester, uint32_t* d
     
     // ~~~~~~~~~~~~~~~~~~~ repulsive forces ~~~~~~~~~~~~~~~~~~~
     // individual updates to momenta for repulsion
-    // float common_repulsion_gradient_multiplier  = -(wij / Qdenom_EMA) * (2.0f * powf(wij, __frcp_rn(alpha_cauchy)));
     float common_repulsion_gradient_multiplier  = -(wij * __frcp_rn(Qdenom_EMA)) * (2.0f * powf(wij, __frcp_rn(alpha_cauchy)));
-
-    printf("%e     %e \n", -(wij * __frcp_rn(Qdenom_EMA)), -(wij / Qdenom_EMA));
 
     #pragma unroll
     for(uint32_t m = 0u; m < Mld; m++){
@@ -289,40 +307,10 @@ __global__ void interactions_K_LD(uint32_t N, float* dvc_Xld_nester, uint32_t* d
         atomicAdd(&dvc_momenta_repulsion[j * Mld + m], momenta_update_j_T[m*block_surface]);}
 
     // ~~~~~~~~~~~~~~~~~~~ find the fursthest neighbour distance in LD and save it ~~~~~~~~~~~~~~~~~~~
-    // start by writing eucl to shared memory
-    momenta_update_i_T[0] = eucl_sq;
-
-
-    __syncthreads();    remove this shiiiiiit
-    float max_ = eucl_sq;    remove this shiiiiiit
-    if(i == 121u && k == 0u){    remove this shiiiiiit
-        for(uint32_t k2 = 0u; k2 < Kld; k2++){    remove this shiiiiiit
-            printf(" %f\n", momenta_update_i_T[k2]);    remove this shiiiiiit
-            if(momenta_update_i_T[k2] > max_){    remove this shiiiiiit
-                max_ = momenta_update_i_T[k2];    remove this shiiiiiit
-            }    remove this shiiiiiit
-        }    remove this shiiiiiit
-    }    remove this shiiiiiit
-    __syncthreads();    remove this shiiiiiit
-
-
-
-    // find the furthest neighbour distance in LD (parallel reduction)
-    periodic_maxReduction_on_matrix(momenta_update_i_T, 1u, block_surface, Kld, k);
-    // write to global memory for point i
-    if(k == 0u){
-        temporary_furthest_neighdists[i] = momenta_update_i_T[0];
-    }
-
-
-
-
-    if(i == 121u && k == 0u){    remove this shiiiiiit
-        printf("  %f ==? %f\n", temporary_furthest_neighdists[i], max_);    remove this shiiiiiit
-    }    remove this shiiiiiit
-
-
-
+    momenta_update_i_T[0] = eucl_sq; // start by writing eucl to shared memory
+    periodic_maxReduction_on_matrix(momenta_update_i_T, 1u, block_surface, Kld, k); // find the furthest neighbour distance in LD (parallel reduction)
+    if(k == 0u){ // save to global memory for point i
+        temporary_furthest_neighdists[i] = momenta_update_i_T[0];}
 }
 
 
@@ -533,11 +521,8 @@ void fill_raw_momenta_launch_cuda(cudaStream_t stream_HD, cudaStream_t stream_LD
     // ~~~~~~~~~~~  sync streams  ~~~~~~~~~
     cudaStreamSynchronize(stream_FAR);
     cudaStreamSynchronize(stream_LD);
-
-
    
-    // TODO: ascend to godhood by using pretch CUDA instruction in assembly (Fermi architecture)
-    // the prefetch instruction is used to load the data from global memory to the L2 cache
+    // TODO: ascend to godhood by using pretch CUDA instruction in assembly (Fermi architecture). The prefetch instruction is used to load the data from global memory to the L2 cache
 }
 
 }

@@ -250,7 +250,6 @@ void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing){
          thing->Xld_nesterov_cuda, thing->neighsHD_cuda, thing->neighsLD_cuda, thing->furthest_neighdists_LD_cuda, thing->Qdenom_EMA,\
           cauchy_alpha, thing->elements_of_Qdenom_cuda,\
            thing->momenta_attraction_cuda, thing->momenta_repulsion_cuda, thing->momenta_repulsion_far_cuda, thing->temporary_furthest_neighdists_LD_cuda, thing->random_numbers_size_NxRand_cuda);
-    dying_breath("------------ done here -------------");
 }
 
 // momentum leak: momenta_repulsion_far gets smoothed across neighbours (with conservation of vector norm)
