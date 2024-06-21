@@ -74,12 +74,9 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     malloc_1d_uint32_cuda(&thing->neighsHD_cuda, N*Khd);
     malloc_1d_float_cuda(&thing->furthest_neighdists_LD_cuda, N);
     malloc_1d_float_cuda(&thing->temporary_furthest_neighdists_LD_cuda, N);
-    malloc_1d_uint32_cuda(&thing->N_elements_of_Qdenom_cuda, 1);
     malloc_1d_uint32_cuda(&thing->random_numbers_size_NxRand_cuda, N*NB_RANDOM_POINTS_FAR_REPULSION);
-    uint32_t N_elements_of_Qdenom = N * (Khd + Kld + NB_RANDOM_POINTS_FAR_REPULSION);
-    malloc_1d_double_cuda(&thing->elements_of_Qdenom_cuda, N_elements_of_Qdenom);
+    
     malloc_1d_float_cuda(&thing->P_cuda, N*Khd);
-    malloc_1d_float_cuda(&thing->now_Qdenom_cuda, 1);
 
     // copy values from the arrays on the CPU
     memcpy_CPU_to_CUDA_float(thing->Xld_base_cuda, as_float_1d(Xld, N, Mld), N*Mld);
@@ -88,7 +85,7 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     memcpy_CPU_to_CUDA_uint32(thing->neighsHD_cuda, as_uint32_1d(neighsHD, N, Khd), N*Khd);
     memcpy_CPU_to_CUDA_float(thing->furthest_neighdists_LD_cuda, furthest_neighdists_LD, N);
     memcpy_CPU_to_CUDA_float(thing->P_cuda, as_float_1d(P, N, Khd), N*Khd);
-    memcpy_CPU_to_CUDA_uint32(thing->N_elements_of_Qdenom_cuda, &N_elements_of_Qdenom, 1);
+    
     // init to 0.0f all momenta
     cudaError_t err1 = cudaMemset(thing->momenta_attraction_cuda, 0, N*Mld*sizeof(float));
     cudaError_t err2 = cudaMemset(thing->momenta_repulsion_far_cuda, 0, N*Mld*sizeof(float));
@@ -103,9 +100,6 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     }
     memcpy_CPU_to_CUDA_uint32(thing->random_numbers_size_NxRand_cuda, random_numbers_size_NxRand, N*NB_RANDOM_POINTS_FAR_REPULSION);
 
-    // init value for the denominator : 1.0f
-    float one = 1.0f;
-    memcpy_CPU_to_CUDA_float(thing->now_Qdenom_cuda, &one, 1u);
 
 /***
  *     _   __                     _       _                           
@@ -234,6 +228,9 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     thing->Kern_FAR_blockshape[2] = 1u;
     thing->Kern_FAR_gridshape[0]  = (N*NB_RANDOM_POINTS_FAR_REPULSION + (NB_RANDOM_POINTS_FAR_REPULSION * Kern3_Ni) - 1u) / (NB_RANDOM_POINTS_FAR_REPULSION * Kern3_Ni);
 
+    // some Qdenom estimation things
+    thing->N_elements_of_Qdenom = thing->Kern_HD_gridshape[0] + thing->Kern_LD_gridshape[0] + thing->Kern_FAR_gridshape[0]; // each block fir each of the 3 kernels will compute one element of Qdenom
+    malloc_1d_double_cuda(&thing->elements_of_Qdenom_cuda, thing->N_elements_of_Qdenom);
 }
 
 // 1: gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion
@@ -244,12 +241,15 @@ void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing){
     float cauchy_alpha = thing->hparam_LDkernel_alpha[0];
     pthread_mutex_unlock(thing->mutex_hparam_LDkernel_alpha);
 
+
     fill_raw_momenta_launch_cuda(thing->stream_K_HD, thing->stream_K_LD, thing->stream_rand,\
         thing->Kern_HD_blockshape, thing->Kern_HD_gridshape, thing->Kern_LD_blockshape, thing->Kern_LD_gridshape, thing->Kern_FAR_blockshape, thing->Kern_FAR_gridshape,\
          thing->N, thing->Khd, thing->P_cuda,\
          thing->Xld_nesterov_cuda, thing->neighsHD_cuda, thing->neighsLD_cuda, thing->furthest_neighdists_LD_cuda, thing->Qdenom_EMA,\
-          cauchy_alpha, thing->elements_of_Qdenom_cuda,\
-           thing->momenta_attraction_cuda, thing->momenta_repulsion_cuda, thing->momenta_repulsion_far_cuda, thing->temporary_furthest_neighdists_LD_cuda, thing->random_numbers_size_NxRand_cuda);
+          cauchy_alpha, thing->elements_of_Qdenom_cuda, thing->N_elements_of_Qdenom,\
+           thing->momenta_attraction_cuda, thing->momenta_repulsion_cuda, thing->momenta_repulsion_far_cuda, thing->temporary_furthest_neighdists_LD_cuda,\
+            thing->random_numbers_size_NxRand_cuda);
+    die();
 }
 
 // momentum leak: momenta_repulsion_far gets smoothed across neighbours (with conservation of vector norm)
@@ -405,11 +405,6 @@ sous-poudrer le tout avec des gradients de MDS
 
 // thing->estimated_Qdenom = (float) (dbl_acc_denom * ( ((double) (thing->N*thing->N - thing->N)) / (double) n_votes));
 // thing->ptr_Qdenom[0] = thing->ptr_Qdenom[0]*ALPHA_QDENOM  + (1.0f - ALPHA_QDENOM) * subthread_estimation_of_denom;
-
-// printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
-// printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
-// printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
-// printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
 
 void destroy_EmbeddingMaker(EmbeddingMaker* thing){
     dying_breath("destroy_EmbeddingMaker not implemented yet");

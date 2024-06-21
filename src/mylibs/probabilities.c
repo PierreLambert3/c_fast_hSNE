@@ -1,6 +1,6 @@
 #include "probabilities.h"
 
-// UNSAFE for sensitive applications: that's a shitty (but fast) rand generator
+// UNSAFE for sensitive applications: that's a bad (but fast) rand generator
 // careful, if the period is high when doing (r%period), the result will be biased (for instance if the rand did number between 0 and 4, and you do r%3, you'll get 0 twice as often as 1 or 2)
 // 2^32 is a bit more than 4 billion, so be careful when getting close to that period (either re-generate or use a 64 bit generator)
 inline uint32_t rand_uint32(uint32_t* rand_state) {
