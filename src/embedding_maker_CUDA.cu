@@ -555,6 +555,7 @@ void fill_raw_momenta_launch_cuda(cudaStream_t stream_HD, cudaStream_t stream_LD
     // ~~~~~~~~~~~  all streams are synced: now compute the Qdenom  ~~~~~~~~~
     //  here : sum the block_offset first elements of dvc_Qdenom_elements
     // faire plutot une copie sur CPU et la somme dans une boucle
+    printf("number of elements: %d\n", Qdenom_N_elements);
     printf("here todo   ^  \n");
    
     // TODO: ascend to godhood by using pretch CUDA instruction in assembly (Fermi architecture). The prefetch instruction is used to load the data from global memory to the L2 cache

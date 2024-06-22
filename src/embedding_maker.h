@@ -45,6 +45,8 @@ typedef struct {
     uint32_t* Kern_LD_blockshape; // 3d array
     uint32_t* Kern_FAR_gridshape;  // 3d array
     uint32_t* Kern_FAR_blockshape; // 3d array
+    uint32_t* Kern_Qdenomsum_blockshape; // 3d array
+    uint32_t* Kern_Qdenomsum_gridshape;
 
     // streams
     cudaStream_t stream_K_HD;

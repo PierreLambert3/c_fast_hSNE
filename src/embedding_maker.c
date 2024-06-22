@@ -228,9 +228,29 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     thing->Kern_FAR_blockshape[2] = 1u;
     thing->Kern_FAR_gridshape[0]  = (N*NB_RANDOM_POINTS_FAR_REPULSION + (NB_RANDOM_POINTS_FAR_REPULSION * Kern3_Ni) - 1u) / (NB_RANDOM_POINTS_FAR_REPULSION * Kern3_Ni);
 
+    // ~~~~~~~~~  Kernel 4: computes the sum of the Qdenom elements  ~~~~~~~~~
     // some Qdenom estimation things
     thing->N_elements_of_Qdenom = thing->Kern_HD_gridshape[0] + thing->Kern_LD_gridshape[0] + thing->Kern_FAR_gridshape[0]; // each block fir each of the 3 kernels will compute one element of Qdenom
     malloc_1d_double_cuda(&thing->elements_of_Qdenom_cuda, thing->N_elements_of_Qdenom);
+    thing->Kern_Qdenomsum_blockshape = malloc_uint32_t(3, 1u);
+    thing->Kern_Qdenomsum_gridshape  = malloc_uint32_t(3, 1u);
+    uint32_t Kern4_n_blocks = 1u;
+    while(true){
+        uint32_t next_Kern4_n_blocks = Kern4_n_blocks + 1;
+        uint32_t next_smem_N_floats  = next_Kern4_n_blocks;
+        bool next_smem_ok = next_smem_N_floats <= target_n_floats_smem;
+        bool next_blocksize_ok = next_Kern4_n_blocks < (uint32_t) prop.maxThreadsDim[0];
+        bool next_nthreads_ok  = next_Kern4_n_blocks <= (uint32_t) prop.maxThreadsPerBlock;
+        if(!next_smem_ok || !next_blocksize_ok || !next_nthreads_ok){
+            break;}
+        Kern4_n_blocks++;
+    }
+    thing->Kern_Qdenomsum_blockshape[0] = Kern4_n_blocks;
+    thing->Kern_Qdenomsum_blockshape[1] = 1u;
+    thing->Kern_Qdenomsum_blockshape[2] = 1u;
+    thing->Kern_Qdenomsum_gridshape[0]  = (thing->N_elements_of_Qdenom + Kern4_n_blocks - 1u) / Kern4_n_blocks;
+    printf("block shapes for kernel 4: (%u, %u)  (grid: %u)  (n elements %d)\n", thing->Kern_Qdenomsum_blockshape[0], 1u, thing->Kern_Qdenomsum_gridshape[0], thing->N_elements_of_Qdenom);
+    ok done ici!;: mtnt juste feire une reduction sur kernel (sur smem) avec atomicAdd a la fin sur l array en device 
 }
 
 // 1: gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion
