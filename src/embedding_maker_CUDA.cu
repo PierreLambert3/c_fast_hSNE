@@ -194,7 +194,7 @@ __device__ void parallel_1dsumReduction_double(double* vector, uint32_t n, uint3
  */
 __global__ void interactions_far(uint32_t N, float* dvc_Xld_nester, float Qdenom_EMA,\
         float alpha_cauchy, double* dvc_Qdenom_elements, float* dvc_momenta_repulsion_far,\
-        uint32_t* random_numbers_size_NxRand, uint32_t Qdenom_offset){
+        uint32_t* random_numbers_size_NxRand){
     // ~~~~~~~~~~~~~~~~~~~ get i, k and j ~~~~~~~~~~~~~~~~~~~
     uint32_t Ni            = blockDim.y; // block shape: (NB_RANDOM_POINTS_FAR_REPULSION, Ni)
     uint32_t block_surface = NB_RANDOM_POINTS_FAR_REPULSION * Ni;
@@ -202,6 +202,8 @@ __global__ void interactions_far(uint32_t N, float* dvc_Xld_nester, float Qdenom
     uint32_t k             = threadIdx.x;       // block shape: (NB_RANDOM_POINTS_FAR_REPULSION, Ni)
     uint32_t i             = i0 + threadIdx.y;  // block shape: (NB_RANDOM_POINTS_FAR_REPULSION, Ni)
     if( i >= N ){return;} // out of bounds
+    if(i >= N - Ni){
+        block_surface = (N - i) * NB_RANDOM_POINTS_FAR_REPULSION;} // last block might not be full
     uint32_t tid           = threadIdx.x + threadIdx.y * NB_RANDOM_POINTS_FAR_REPULSION; // index within the block
     uint32_t j             = random_numbers_size_NxRand[i * NB_RANDOM_POINTS_FAR_REPULSION + k] % N;
 
@@ -251,7 +253,7 @@ __global__ void interactions_far(uint32_t N, float* dvc_Xld_nester, float Qdenom
     smem_double[tid]    = (double) wij;
     parallel_1dsumReduction_double(smem_double, block_surface, tid);
     if(tid == 0u){
-        dvc_Qdenom_elements[Qdenom_offset + blockIdx.x] = smem_double[0u];}
+        dvc_Qdenom_elements[blockIdx.x] = smem_double[0u];}
     return;
 }
 
@@ -277,7 +279,7 @@ __global__ void interactions_far(uint32_t N, float* dvc_Xld_nester, float Qdenom
         |i0,k0| i0,k1 | i0,k2 | ... | i0,k(Kld-1) | i1,k0 | i1,k1 | i1,k2 | ... | i1,k(Kld-1) | ... | i(Ni-1),k(Kld-1)|
 */
 __global__ void interactions_K_LD(uint32_t N, float* dvc_Xld_nester, uint32_t* dvc_neighsLD, float Qdenom_EMA,\
-        float alpha_cauchy, double* dvc_Qdenom_elements, float* dvc_momenta_repulsion, float* temporary_furthest_neighdists, uint32_t Qdenom_offset){
+        float alpha_cauchy, double* dvc_Qdenom_elements, float* dvc_momenta_repulsion, float* temporary_furthest_neighdists){
     // ~~~~~~~~~~~~~~~~~~~ get i, k and j ~~~~~~~~~~~~~~~~~~~
     uint32_t Ni            = blockDim.y; // block shape: (Kld, Ni)
     uint32_t block_surface = Kld * Ni;
@@ -285,6 +287,8 @@ __global__ void interactions_K_LD(uint32_t N, float* dvc_Xld_nester, uint32_t* d
     uint32_t k             = threadIdx.x;       // block shape: (Kld, Ni)
     uint32_t i             = i0 + threadIdx.y;  // block shape: (Kld, Ni)
     if( i >= N ){return;} // out of bounds (no guarantee that N is a multiple of Kld)
+    if(i >= N - Ni){
+        block_surface = (N - i) * Kld;} // last block might not be full
     uint32_t j             = dvc_neighsLD[i * Kld + k]; 
     uint32_t tid           = threadIdx.x + threadIdx.y * Kld; // index within the block
 
@@ -346,8 +350,7 @@ __global__ void interactions_K_LD(uint32_t N, float* dvc_Xld_nester, uint32_t* d
     smem_double[tid]    = (double) wij;
     parallel_1dsumReduction_double(smem_double, block_surface, tid);
     if(tid == 0u){
-        dvc_Qdenom_elements[Qdenom_offset + blockIdx.x] = smem_double[0u];}
-    return;
+        dvc_Qdenom_elements[blockIdx.x] = smem_double[0u]; }
 }
 
 
@@ -376,15 +379,17 @@ block shape: (Khd, Ni)
 __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nester,\
         uint32_t* dvc_neighsHD, float* furthest_neighdists_LD, float Qdenom_EMA,\
         float alpha_cauchy, double* dvc_Qdenom_elements, float* dvc_momenta_attraction,\
-        float* dvc_momenta_repulsion, uint32_t Qdenom_offset){
+        float* dvc_momenta_repulsion){
     // ~~~~~~~~~~~~~~~~~~~ get i, k and j ~~~~~~~~~~~~~~~~~~~
     uint32_t Khd           = blockDim.x; // block shape: (Khd, Ni);  Khd is guaranteed to be >= 32u
     uint32_t Ni            = blockDim.y; // block shape: (Khd, Ni)
-    uint32_t block_surface = blockDim.x * blockDim.y;
+    uint32_t block_surface = blockDim.x * blockDim.y; // Khd * Ni
     uint32_t i0            = (block_surface * blockIdx.x) / Khd; // the value of the smallest i in the block
     uint32_t k             = threadIdx.x;
     uint32_t i             = i0 + threadIdx.y;
     if( i >= N ){return;} // out of bounds (no guarantee that N is a multiple of Ni)
+    if(i >= N - Ni){
+        block_surface = (N - i) * Khd;} // last block might not be full
     uint32_t j             = dvc_neighsHD[i * Khd + k]; 
     uint32_t tid           = threadIdx.x + threadIdx.y * Khd; // index within the block
 
@@ -478,7 +483,7 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
     smem_double[tid]    = (double) wij;
     parallel_1dsumReduction_double(smem_double, block_surface, tid); 
     if(tid == 0u){
-        dvc_Qdenom_elements[Qdenom_offset + blockIdx.x] = smem_double[0u];}
+        dvc_Qdenom_elements[blockIdx.x] = smem_double[0u];}
     return;
 }
 
@@ -518,26 +523,25 @@ void fill_raw_momenta_launch_cuda(cudaStream_t stream_HD, cudaStream_t stream_LD
     // uint32_t
     
     // ~~~~~~~~~  launch kernels (and wait for async memset to finish)  ~~~~~~~~~
-    uint32_t block_offset = 0u;
     // kernel 1 : HD neighbours
     cudaStreamSynchronize(stream_HD); // wait for the momenta to clear
-    interactions_K_HD<<<Kern_HD_grid, Kern_HD_block, Kern_HD_sharedMemorySize, stream_HD>>>(N, dvc_Pij, dvc_Xld_nester, dvc_neighsHD, furthest_neighdists_LD, Qdenom_EMA, alpha_cauchy, dvc_Qdenom_elements, dvc_momenta_attraction, dvc_momenta_repulsion, block_offset);// launch the kernel 1
+    interactions_K_HD<<<Kern_HD_grid, Kern_HD_block, Kern_HD_sharedMemorySize, stream_HD>>>(N, dvc_Pij, dvc_Xld_nester, dvc_neighsHD, furthest_neighdists_LD, Qdenom_EMA, alpha_cauchy, dvc_Qdenom_elements, dvc_momenta_attraction, dvc_momenta_repulsion);// launch the kernel 1
     cudaError_t err1 = cudaGetLastError();
     if (err1 != cudaSuccess) {printf("Error in kernel 1: %s\n", cudaGetErrorString(err1));}
+
     // kernel 2 : LD neighbours
-    block_offset += Kern_HD_grid.x * Kern_HD_grid.y;
     cudaStreamSynchronize(stream_LD); // wait for the momenta to clear
-    interactions_K_LD<<<Kern_LD_grid, Kern_LD_block, Kern_LD_sharedMemorySize, stream_LD>>>(N, dvc_Xld_nester, dvc_neighsLD, Qdenom_EMA, alpha_cauchy, &dvc_Qdenom_elements[N*Khd], dvc_momenta_repulsion, temporary_furthest_neighdists, block_offset);// launch the kernel 2
+    uint32_t Qdenom_offset = Kern_HD_grid.x * Kern_HD_grid.y;
+    interactions_K_LD<<<Kern_LD_grid, Kern_LD_block, Kern_LD_sharedMemorySize, stream_LD>>>(N, dvc_Xld_nester, dvc_neighsLD, Qdenom_EMA, alpha_cauchy, &dvc_Qdenom_elements[Qdenom_offset], dvc_momenta_repulsion, temporary_furthest_neighdists);// launch the kernel 2
     cudaError_t err2 = cudaGetLastError();
     if (err2 != cudaSuccess) {printf("Error in kernel 2: %s\n", cudaGetErrorString(err2));}
+
     // kernel 3 : FAR neighbours
-    block_offset += Kern_LD_grid.x * Kern_LD_grid.y;
     cudaStreamSynchronize(stream_FAR); // wait for the momenta to clear
-    interactions_far<<<Kern_FAR_grid, Kern_FAR_block, Kern_FAR_sharedMemorySize, stream_FAR>>>(N, dvc_Xld_nester, Qdenom_EMA, alpha_cauchy, &dvc_Qdenom_elements[N*Khd + N*Kld], dvc_momenta_repulsion_far, random_numbers_size_NxRand, block_offset);// launch the kernel 3
+    Qdenom_offset += Kern_LD_grid.x * Kern_LD_grid.y;
+    interactions_far<<<Kern_FAR_grid, Kern_FAR_block, Kern_FAR_sharedMemorySize, stream_FAR>>>(N, dvc_Xld_nester, Qdenom_EMA, alpha_cauchy, &dvc_Qdenom_elements[Qdenom_offset], dvc_momenta_repulsion_far, random_numbers_size_NxRand);// launch the kernel 3
     cudaError_t err3 = cudaGetLastError();
     if (err3 != cudaSuccess) {printf("Error in kernel 3: %s\n", cudaGetErrorString(err3));}
-    block_offset += Kern_FAR_grid.x * Kern_FAR_grid.y;
-
 
     // ~~~~~~~~~~~  memcpy for furthest_neighdists_LD  ~~~~~~~~~
     // wait for the 1st kernel to finish (because it uses furthest_neighdists_LD)

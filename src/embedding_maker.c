@@ -151,13 +151,14 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     if(!reg_ok || !smem_ok || !blocksize_ok){
         dying_breath("could not find a suitable block size for the kernel 1");}
 
-    printf("block shapes for kernel 1: (%u, %u)\n", Khd, kern1_Ni);
-    printf("memory usage and maxima for kernel 1: smem_N_floats, target_n_floats_smem, reg_N_floats, reg_max_N_floats %u %u %u %u\n", smem_N_floats, target_n_floats_smem, reg_N_floats, reg_max_N_floats);
+    printf("\nblock shapes for kernel 1: (%u, %u)\n", Khd, kern1_Ni);
+    printf("memory usage and maxima for kernel 1: smem_N_floats, %u target_n_floats_smem, %u  reg_N_floats, %u reg_max_N_floats %u  \n", smem_N_floats, target_n_floats_smem, reg_N_floats, reg_max_N_floats);
     printf("number of threads per block: %u\n", Khd* kern1_Ni);
     thing->Kern_HD_blockshape[0] = Khd;
     thing->Kern_HD_blockshape[1] = kern1_Ni; // Ni!
     thing->Kern_HD_blockshape[2] = 1u;
     thing->Kern_HD_gridshape[0]  = (N*Khd + (Khd * kern1_Ni) - 1u) / (Khd * kern1_Ni);
+    printf("grid shape for kernel 1: %u\n\n", thing->Kern_HD_gridshape[0]);
     
     // ~~~~~~~~~  Kernel 2: LD neighbours, determining block size and grid shape  ~~~~~~~~~
     // grid 1d ; block 2d : (Kld, Ni)
@@ -186,12 +187,13 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     if(!reg_ok_Kern2 || !smem_ok_Kern2 || !blocksize_ok_Kern2){
         dying_breath("could not find a suitable block size for the kernel 2");}
     printf("block shapes for kernel 2: (%u, %u)\n", Kld, Kern2_Ni);
-    printf("memory usage and maxima for kernel 2: smem_N_floats, target_n_floats_smem, reg_N_floats, reg_max_N_floats %u %u %u %u\n", smem_N_floats_Kern2, target_n_floats_smem, reg_N_floats_Kern2, reg_max_N_floats);
+    printf("memory usage and maxima for kernel 2: smem_N_floats, %u target_n_floats_smem, %u  reg_N_floats, %u reg_max_N_floats %u  \n", smem_N_floats_Kern2, target_n_floats_smem, reg_N_floats_Kern2, reg_max_N_floats);
     printf("number of threads per block: %u\n", Kld* Kern2_Ni);
     thing->Kern_LD_blockshape[0] = Kld;
     thing->Kern_LD_blockshape[1] = Kern2_Ni; // Ni!
     thing->Kern_LD_blockshape[2] = 1u;
     thing->Kern_LD_gridshape[0]  = (N*Kld + (Kld * Kern2_Ni) - 1u) / (Kld * Kern2_Ni);
+    printf("grid shape for kernel 2: %u\n\n", thing->Kern_LD_gridshape[0]);
 
 
     // ~~~~~~~~~  Kernel 3: random far repulsion, determining block size and grid shape  ~~~~~~~~~
@@ -221,12 +223,13 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     if(!reg_ok_Kern3 || !smem_ok_Kern3 || !blocksize_ok_Kern3){
         dying_breath("could not find a suitable block size for the kernel 3");}
     printf("block shapes for kernel 3: (%u, %u)\n", NB_RANDOM_POINTS_FAR_REPULSION, Kern3_Ni);
-    printf("memory usage and maxima for kernel 3: smem_N_floats, target_n_floats_smem, reg_N_floats, reg_max_N_floats %u %u %u %u\n", smem_N_floats_Kern3, target_n_floats_smem, reg_N_floats_Kern3, reg_max_N_floats);
+    printf("memory usage and maxima for kernel 3: smem_N_floats, %u target_n_floats_smem, %u  reg_N_floats, %u reg_max_N_floats %u  \n", smem_N_floats_Kern3, target_n_floats_smem, reg_N_floats_Kern3, reg_max_N_floats);
     printf("number of threads per block: %u\n", NB_RANDOM_POINTS_FAR_REPULSION * Kern3_Ni);
     thing->Kern_FAR_blockshape[0] = NB_RANDOM_POINTS_FAR_REPULSION;
     thing->Kern_FAR_blockshape[1] = Kern3_Ni; // Ni!
     thing->Kern_FAR_blockshape[2] = 1u;
     thing->Kern_FAR_gridshape[0]  = (N*NB_RANDOM_POINTS_FAR_REPULSION + (NB_RANDOM_POINTS_FAR_REPULSION * Kern3_Ni) - 1u) / (NB_RANDOM_POINTS_FAR_REPULSION * Kern3_Ni);
+    printf("grid shape for kernel 3: %u\n\n", thing->Kern_FAR_gridshape[0]);
 
     // ~~~~~~~~~  Kernel 4: computes the sum of the Qdenom elements  ~~~~~~~~~
     // some Qdenom estimation things
@@ -250,7 +253,7 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     thing->Kern_Qdenomsum_blockshape[2] = 1u;
     thing->Kern_Qdenomsum_gridshape[0]  = (thing->N_elements_of_Qdenom + Kern4_n_blocks - 1u) / Kern4_n_blocks;
     printf("block shapes for kernel 4: (%u, %u)  (grid: %u)  (n elements %d)\n", thing->Kern_Qdenomsum_blockshape[0], 1u, thing->Kern_Qdenomsum_gridshape[0], thing->N_elements_of_Qdenom);
-    ok done ici!;: mtnt juste feire une reduction sur kernel (sur smem) avec atomicAdd a la fin sur l array en device 
+    // ok done ici!;: mtnt juste feire une reduction sur kernel (sur smem) avec atomicAdd a la fin sur l array en device 
 }
 
 // 1: gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion
@@ -269,7 +272,7 @@ void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing){
           cauchy_alpha, thing->elements_of_Qdenom_cuda, thing->N_elements_of_Qdenom,\
            thing->momenta_attraction_cuda, thing->momenta_repulsion_cuda, thing->momenta_repulsion_far_cuda, thing->temporary_furthest_neighdists_LD_cuda,\
             thing->random_numbers_size_NxRand_cuda);
-    die();
+    // die();
 }
 
 // momentum leak: momenta_repulsion_far gets smoothed across neighbours (with conservation of vector norm)
