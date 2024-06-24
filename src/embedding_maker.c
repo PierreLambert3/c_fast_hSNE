@@ -77,7 +77,6 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     malloc_1d_float_cuda(&thing->furthest_neighdists_LD_cuda, N);
     malloc_1d_float_cuda(&thing->temporary_furthest_neighdists_LD_cuda, N);
     malloc_1d_uint32_cuda(&thing->random_numbers_size_NxRand_cuda, N*NB_RANDOM_POINTS_FAR_REPULSION);
-    
     malloc_1d_float_cuda(&thing->P_cuda, N*Khd);
 
 
@@ -268,14 +267,61 @@ void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing){
     float cauchy_alpha = thing->hparam_LDkernel_alpha[0];
     pthread_mutex_unlock(thing->mutex_hparam_LDkernel_alpha);
 
+
+    
+
+    float sum_Qdenom_elements_cpu = 0.0f;
     fill_raw_momenta_launch_cuda(thing->stream_K_HD, thing->stream_K_LD, thing->stream_rand, thing->stream_Qdenomsum,\
         thing->Kern_HD_blockshape, thing->Kern_HD_gridshape, thing->Kern_LD_blockshape, thing->Kern_LD_gridshape, thing->Kern_FAR_blockshape, thing->Kern_FAR_gridshape, thing->Kern_Qdenomsum_blockshape, thing->Kern_Qdenomsum_gridshape,\
          thing->N, thing->Khd, thing->P_cuda,\
          thing->Xld_nesterov_cuda, thing->neighsHD_cuda, thing->neighsLD_cuda, thing->furthest_neighdists_LD_cuda, thing->Qdenom_EMA,\
-          cauchy_alpha, thing->elements_of_Qdenom_cuda, thing->sum_Qdenom_elements_cuda, thing->N_elements_of_Qdenom,\
+          cauchy_alpha, thing->elements_of_Qdenom_cuda, thing->sum_Qdenom_elements_cuda, &sum_Qdenom_elements_cpu, thing->N_elements_of_Qdenom,\
            thing->momenta_attraction_cuda, thing->momenta_repulsion_cuda, thing->momenta_repulsion_far_cuda, thing->temporary_furthest_neighdists_LD_cuda,\
             thing->random_numbers_size_NxRand_cuda);
-    // die();
+    
+    
+    // update EMA of Qdenom
+    printf("NEED TO UNDO CHANGE ON NEIGHS LD FINDER AND RAND INIT\n");
+    uint32_t n_samples_estim = thing->N_elements_of_Qdenom;
+    uint32_t matrix_area = thing->N * (thing->N-1u);
+    float   scaling_factor = (float) ((double) (matrix_area) / (double) n_samples_estim);
+    float new_Qdenom = sum_Qdenom_elements_cpu * scaling_factor;
+    
+
+    double Qdenom_accumulator = 0.0;
+    uint32_t n_samples = 100000u;
+    for(uint32_t n_votes = 0; n_votes < n_samples; n_votes++){
+        uint32_t i = rand_uint32_between(&thing->rand_state, 0u, thing->N);
+        uint32_t j = rand_uint32_between(&thing->rand_state, 0u, thing->N);
+        float* Xi = thing->Xld_cpu[i];
+        float* Xj = thing->Xld_cpu[j];
+        Qdenom_accumulator += 1.0 / pow(1.0 + (double)f_euclidean_sq_in_embedding(Xi, Xj)/(double)cauchy_alpha, (double)cauchy_alpha);
+        // Qdenom_accumulator += 1.0 / pow(1.0 + (double)(f_euclidean_sq_in_embedding(&thing->Xld_nesterov_cuda[i], &thing->Xld_nesterov_cuda[j])/(double)thing->hparam_LDkernel_alpha[0]), (double)thing->hparam_LDkernel_alpha[0]);
+    }
+    double   scaling_factor2 = (double) (matrix_area) / (double) n_samples;
+    float oldQdenom = (float) (Qdenom_accumulator * scaling_factor2);
+
+    // 6552376.353607  idiotic sum
+    // 6553533.000000  reduced fast sum
+    printf("new Qdenom: %.3e (old: %.3e)                 sum_Qdenom_elements_cpu %f\n", new_Qdenom, oldQdenom, sum_Qdenom_elements_cpu);
+
+--> la difference vient de quand je calcule les Qelemens: soit sur les kernel (avant toute somme), soit soit sur la somme a la fin des kernels 
+       determiner si ca vient de la somme a la fin des kernels: faire avec une boucle stupidement  
+       si on a les memes valeurs ainsi, alors ca vient du calcul/de la suvegarde des Qelements individuels
+
+    /*
+    double Qdenom_accumulator = 0.0;
+    uint32_t n_samples = 10000u;
+    for(uint32_t n_votes = 0; n_votes < n_samples; n_votes++){
+        uint32_t i = rand_uint32_between(&thing->rand_state, 0u, N);
+        uint32_t j = rand_uint32_between(&thing->rand_state, 0u, N);
+        Qdenom_accumulator += 1.0f / powf(1.0f + f_euclidean_sq_in_embedding(Xld[i], Xld[j])/thing->hparam_LDkernel_alpha[0], thing->hparam_LDkernel_alpha[0]);
+    }
+    uint32_t matrix_area = N * (N-1);
+    double   scaling_factor = (double) (matrix_area) / (double) n_samples;
+    thing->Qdenom_EMA = (float) (Qdenom_accumulator * scaling_factor);
+     */
+
 }
 
 // momentum leak: momenta_repulsion_far gets smoothed across neighbours (with conservation of vector norm)

@@ -102,7 +102,7 @@ void fill_raw_momenta_launch_cuda(cudaStream_t, cudaStream_t, cudaStream_t, cuda
  uint32_t*, uint32_t*,uint32_t*, uint32_t*,uint32_t*, uint32_t*,uint32_t*, uint32_t*,\
   uint32_t, uint32_t, float*,\
    float*, uint32_t*, uint32_t*, float*, float,\
-    float, double*, float*, uint32_t,\
+    float, double*, float*, float*, uint32_t,\
      float*, float*, float*, float*,\
       uint32_t*);
 #endif // EMBEDDING_MAKER_H

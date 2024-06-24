@@ -496,6 +496,17 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
 }
 
 __global__ void final_sum_Qdenom_elements(double* dvc_Qdenom_elements, float* sum_Qdenom_elements, uint32_t n_elements_total){
+
+
+    /* if(blockIdx.x == 0 && threadIdx.x == 0){
+        double sum = 0.0;
+        for(uint32_t i = 0u; i < n_elements_total; i++){
+            sum += (float) dvc_Qdenom_elements[i];
+        }
+        printf("\n\nsum = %f\n\n", sum);
+    } */
+
+
     extern __shared__ double smem4[];
     uint32_t tid           = threadIdx.x;
     uint32_t global_offset = blockIdx.x * blockDim.x;
@@ -517,7 +528,7 @@ void fill_raw_momenta_launch_cuda(cudaStream_t stream_HD, cudaStream_t stream_LD
      uint32_t* Kern_HD_blockshape, uint32_t* Kern_HD_gridshape,uint32_t* Kern_LD_blockshape, uint32_t* Kern_LD_gridshape,uint32_t* Kern_FAR_blockshape, uint32_t* Kern_FAR_gridshape, uint32_t* Kern_Qdenomsum_blockshape, uint32_t* Kern_Qdenomsum_gridshape,\
       uint32_t N, uint32_t Khd, float* dvc_Pij,\
       float* dvc_Xld_nester, uint32_t* dvc_neighsHD, uint32_t* dvc_neighsLD, float* furthest_neighdists_LD, float Qdenom_EMA,\
-       float alpha_cauchy, double* dvc_Qdenom_elements, float* sum_Qdenom_elements, uint32_t Qdenom_N_elements,\
+       float alpha_cauchy, double* dvc_Qdenom_elements, float* dvc_sum_Qdenom_elements, float* cpu_sum_Qdenom_elements, uint32_t Qdenom_N_elements,\
         float* dvc_momenta_attraction, float* dvc_momenta_repulsion, float* dvc_momenta_repulsion_far, float* temporary_furthest_neighdists,\
          uint32_t* random_numbers_size_NxRand){
     
@@ -526,7 +537,7 @@ void fill_raw_momenta_launch_cuda(cudaStream_t stream_HD, cudaStream_t stream_LD
     cudaMemsetAsync(dvc_momenta_repulsion, 0, N * Mld * sizeof(float), stream_LD);
     cudaMemsetAsync(dvc_momenta_repulsion_far, 0, N * Mld * sizeof(float), stream_FAR);
     cudaMemsetAsync(dvc_Qdenom_elements, 0, Qdenom_N_elements * sizeof(double), stream_Qdenomsum);
-    cudaMemsetAsync(sum_Qdenom_elements, 0, sizeof(float), stream_Qdenomsum);
+    cudaMemsetAsync(dvc_sum_Qdenom_elements, 0, sizeof(float), stream_Qdenomsum);
 
     // ~~~~~~~~~  prepare kernel calls ~~~~~~~~~
     // Kernel 1: HD neighbours
@@ -582,7 +593,8 @@ void fill_raw_momenta_launch_cuda(cudaStream_t stream_HD, cudaStream_t stream_LD
 
     // ~~~~~~~~~~~  now compute the Qdenom  ~~~~~~~~~
     cudaStreamSynchronize(stream_FAR); // sync remaining stream
-    final_sum_Qdenom_elements<<<Kern_Qdenomsum_grid, Kern_Qdenomsum_block, Kern_Qdenomsum_sharedMemorySize, stream_Qdenomsum>>>(dvc_Qdenom_elements,sum_Qdenom_elements, Qdenom_N_elements);
+    final_sum_Qdenom_elements<<<Kern_Qdenomsum_grid, Kern_Qdenomsum_block, Kern_Qdenomsum_sharedMemorySize, stream_Qdenomsum>>>(dvc_Qdenom_elements, dvc_sum_Qdenom_elements, Qdenom_N_elements);
+    cudaMemcpyAsync(cpu_sum_Qdenom_elements, dvc_sum_Qdenom_elements, sizeof(float), cudaMemcpyDeviceToHost, stream_Qdenomsum);
 
     // ~~~~~~~~~~~  sync last streams  ~~~~~~~~~
     cudaStreamSynchronize(stream_Qdenomsum);
