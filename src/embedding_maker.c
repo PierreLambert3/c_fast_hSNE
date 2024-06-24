@@ -69,9 +69,9 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     // things on GPU
     malloc_1d_float_cuda(&thing->Xld_base_cuda, N*Mld);
     malloc_1d_float_cuda(&thing->Xld_nesterov_cuda, N*Mld);
-    malloc_1d_float_cuda(&thing->momenta_attraction_cuda, N*Mld);
-    malloc_1d_float_cuda(&thing->momenta_repulsion_far_cuda, N*Mld);
-    malloc_1d_float_cuda(&thing->momenta_repulsion_cuda, N*Mld);
+    malloc_1d_float_cuda(&thing->nudge_attraction_cuda, N*Mld);
+    malloc_1d_float_cuda(&thing->nudge_repulsion_far_cuda, N*Mld);
+    malloc_1d_float_cuda(&thing->nudge_repulsion_cuda, N*Mld);
     malloc_1d_uint32_cuda(&thing->neighsLD_cuda, N*Kld);
     malloc_1d_uint32_cuda(&thing->neighsHD_cuda, N*Khd);
     malloc_1d_float_cuda(&thing->furthest_neighdists_LD_cuda, N);
@@ -90,9 +90,9 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     memcpy_CPU_to_CUDA_float(thing->P_cuda, as_float_1d(P, N, Khd), N*Khd);
     
     // init to 0.0f all momenta
-    cudaError_t err1 = cudaMemset(thing->momenta_attraction_cuda, 0, N*Mld*sizeof(float));
-    cudaError_t err2 = cudaMemset(thing->momenta_repulsion_far_cuda, 0, N*Mld*sizeof(float));
-    cudaError_t err3 = cudaMemset(thing->momenta_repulsion_cuda, 0, N*Mld*sizeof(float));
+    cudaError_t err1 = cudaMemset(thing->nudge_attraction_cuda, 0, N*Mld*sizeof(float));
+    cudaError_t err2 = cudaMemset(thing->nudge_repulsion_far_cuda, 0, N*Mld*sizeof(float));
+    cudaError_t err3 = cudaMemset(thing->nudge_repulsion_cuda, 0, N*Mld*sizeof(float));
     if(err1 != cudaSuccess || err2 != cudaSuccess || err3 != cudaSuccess){
         dying_breath("cudamemset error");
     }
@@ -261,20 +261,20 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
 
 // 1: gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion
 // 2: this also recomputes the furthest_neighdists_LD
-void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing){
+void fill_nudges_GPU(EmbeddingMaker_GPU* thing){
     // get the alpha hyperparameter, for the simplified Cauchy kernel
     pthread_mutex_lock(thing->mutex_hparam_LDkernel_alpha);
     float cauchy_alpha = thing->hparam_LDkernel_alpha[0];
     pthread_mutex_unlock(thing->mutex_hparam_LDkernel_alpha);
 
-    // ----------- 1: gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion -----------
+    // ----------- 1: gradient descent: fill nudge_attraction, nudge_repulsion_far, nudge_repulsion -----------
     float sum_Qdenom_elements_cpu = 0.0f;
     fill_raw_momenta_launch_cuda(thing->stream_K_HD, thing->stream_K_LD, thing->stream_rand, thing->stream_Qdenomsum,\
         thing->Kern_HD_blockshape, thing->Kern_HD_gridshape, thing->Kern_LD_blockshape, thing->Kern_LD_gridshape, thing->Kern_FAR_blockshape, thing->Kern_FAR_gridshape, thing->Kern_Qdenomsum_blockshape, thing->Kern_Qdenomsum_gridshape,\
          thing->N, thing->Khd, thing->P_cuda,\
          thing->Xld_nesterov_cuda, thing->neighsHD_cuda, thing->neighsLD_cuda, thing->furthest_neighdists_LD_cuda, thing->Qdenom_EMA,\
           cauchy_alpha, thing->elements_of_Qdenom_cuda, thing->sum_Qdenom_elements_cuda, &sum_Qdenom_elements_cpu, thing->N_elements_of_Qdenom,\
-           thing->momenta_attraction_cuda, thing->momenta_repulsion_cuda, thing->momenta_repulsion_far_cuda, thing->temporary_furthest_neighdists_LD_cuda,\
+           thing->nudge_attraction_cuda, thing->nudge_repulsion_cuda, thing->nudge_repulsion_far_cuda, thing->temporary_furthest_neighdists_LD_cuda,\
             thing->random_numbers_size_NxRand_cuda);
     
     
@@ -411,10 +411,10 @@ void* routine_EmbeddingMaker_GPU(void* arg){
     double start_time = time_seconds();
     while(thing->is_running){
         // ~~~~~~~~~~ gradient descent ~~~~~~~~~~
-        // gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion
-        fill_raw_momenta_GPU(thing);
+        // gradient descent: nudge things around a little bit, on the GPU 
+        fill_nudges_GPU(thing);
 
-        // momentum leak: momenta_repulsion_far gets smoothed across neighbours (with conservation of vector norm)
+        // momentum leak: momenta_repulsion_far gets smoothed across neighbours (with conservation of movement)
         momenta_leak_GPU(thing);
 
         // apply momenta to Xld, regenerate Xld_nesterov, decay momenta

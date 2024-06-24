@@ -58,11 +58,12 @@ typedef struct {
     float*          Xld_base_cuda;     // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data
     float*          Xld_nesterov_cuda; // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data
 
-    float*          momenta_attraction_cuda;   // will be on GPU as a 1d-array, use momenta_attraction[N] to access the 1d data
-    float*          momenta_repulsion_far_cuda;  // this will leak to neighbours 
-    float*          momenta_repulsion_cuda;
+    float*          nudge_attraction_cuda;   // will be on GPU as a 1d-array, use momenta_attraction[N] to access the 1d data
+    float*          nudge_repulsion_far_cuda;  // this will leak to neighbours 
+    float*          nudge_repulsion_cuda;
 
-    
+    kernel cuda : (i, j) avec j dans les Kld  
+    tous les voisins recoivent (0.6*nudge_far / Kld) (avec atomicAdd)  puis syncthreads puis  AtomicAdd saved_initial_value*0.6
 
     uint32_t*       neighsLD_cuda;
     uint32_t*       neighsHD_cuda;
@@ -98,7 +99,7 @@ void* routine_EmbeddingMaker_CPU(void* arg);
 void* routine_EmbeddingMaker_GPU(void* arg);
 void  start_thread_EmbeddingMaker(EmbeddingMaker* thing);
 
-void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing);
+void fill_nudges_GPU(EmbeddingMaker_GPU* thing);
 void momenta_leak_GPU(EmbeddingMaker_GPU* thing);
 void apply_momenta_and_decay_GPU(EmbeddingMaker_GPU* thing);
 
