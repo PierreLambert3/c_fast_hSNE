@@ -62,8 +62,10 @@ typedef struct {
     float*          nudge_repulsion_far_cuda;  // this will leak to neighbours 
     float*          nudge_repulsion_cuda;
 
-    kernel cuda : (i, j) avec j dans les Kld  
-    tous les voisins recoivent (0.6*nudge_far / Kld) (avec atomicAdd)  puis syncthreads puis  AtomicAdd saved_initial_value*0.6
+    kernel cuda : (i, j) avec j dans les Kld et les Kld premiers voisins en HD
+    pour ce smoothing, il faut IMPERATIVEMENT que je smooth vers une autre matrice, sinon ca complique trop les choses avec des sync 
+    --> on vide le gradient far vers le nouveau array, mais avec leak proches, controlé par un parametre (ex: on leak 0.9% et garde 0.1%)
+
 
     uint32_t*       neighsLD_cuda;
     uint32_t*       neighsHD_cuda;
