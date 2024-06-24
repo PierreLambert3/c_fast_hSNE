@@ -197,13 +197,16 @@ __global__ void interactions_far(uint32_t N, float* dvc_Xld_nester, float Qdenom
         uint32_t* random_numbers_size_NxRand){
     // ~~~~~~~~~~~~~~~~~~~ get i, k and j ~~~~~~~~~~~~~~~~~~~
     uint32_t Ni            = blockDim.y; // block shape: (NB_RANDOM_POINTS_FAR_REPULSION, Ni)
+    // if last block: Ni is not guaranteed to be the same as usual
+    if(blockIdx.x == gridDim.x - 1u){
+        uint32_t effective_Ni = N - (blockIdx.x * Ni);
+        Ni = effective_Ni;
+    }
     uint32_t block_surface = NB_RANDOM_POINTS_FAR_REPULSION * Ni;
     uint32_t i0            = (block_surface * blockIdx.x) / NB_RANDOM_POINTS_FAR_REPULSION; // the value of the smallest i in the block
     uint32_t k             = threadIdx.x;       // block shape: (NB_RANDOM_POINTS_FAR_REPULSION, Ni)
     uint32_t i             = i0 + threadIdx.y;  // block shape: (NB_RANDOM_POINTS_FAR_REPULSION, Ni)
     if( i >= N ){return;} // out of bounds
-    if(i >= N - Ni){
-        block_surface = (N - i) * NB_RANDOM_POINTS_FAR_REPULSION;} // last block might not be full
     uint32_t tid           = threadIdx.x + threadIdx.y * NB_RANDOM_POINTS_FAR_REPULSION; // index within the block
     uint32_t j             = random_numbers_size_NxRand[i * NB_RANDOM_POINTS_FAR_REPULSION + k] % N;
 
@@ -214,9 +217,9 @@ __global__ void interactions_far(uint32_t N, float* dvc_Xld_nester, float Qdenom
         Xj[m] = dvc_Xld_nester[j * Mld + m];}
 
     // ~~~~~~~~~~~~~~~~~~~ Initialise shared memory ~~~~~~~~~~~~~~~~~~~
-    extern __shared__ float smem[];
-    float* Xi                   = &smem[(i - i0) * Mld];
-    float* momenta_update_i_T   = &smem[Ni*Mld + tid];  // stride for changing m: block_surface
+    extern __shared__ float smem3[];
+    float* Xi                   = &smem3[(i - i0) * Mld];
+    float* momenta_update_i_T   = &smem3[Ni*Mld + tid];  // stride for changing m: block_surface
     if(k == 0){ // fetch Xi from DRAM
         #pragma unroll
         for (uint32_t m = 0u; m < Mld; m++) {
@@ -249,15 +252,13 @@ __global__ void interactions_far(uint32_t N, float* dvc_Xld_nester, float Qdenom
     
     // ~~~~~~~~~~~~~~~~~~~ aggregate wij for this block ~~~~~~~~~~~~~~~~~~~
     __syncthreads();
-    double* smem_double = (double*) &smem;
-    smem_double[tid]    = (double) wij;
-    parallel_1dsumReduction_double(smem_double, block_surface, tid);
+    double* smem_double3 = (double*) &smem3;
+    smem_double3[tid]    = (double) wij;
+    parallel_1dsumReduction_double(smem_double3, block_surface, tid);
     if(tid == 0u){
-        dvc_Qdenom_elements[blockIdx.x] = smem_double[0u];}
+        dvc_Qdenom_elements[blockIdx.x] = smem_double3[0u];}
     return;
 }
-
-
 
 
 /* visual representation of shared memory:
@@ -282,13 +283,17 @@ __global__ void interactions_K_LD(uint32_t N, float* dvc_Xld_nester, uint32_t* d
         float alpha_cauchy, double* dvc_Qdenom_elements, float* dvc_momenta_repulsion, float* temporary_furthest_neighdists){
     // ~~~~~~~~~~~~~~~~~~~ get i, k and j ~~~~~~~~~~~~~~~~~~~
     uint32_t Ni            = blockDim.y; // block shape: (Kld, Ni)
+    // if last block: Ni is not guaranteed to be the same as usual
+    if(blockIdx.x == gridDim.x - 1u){
+        uint32_t effective_Ni = N - (blockIdx.x * Ni);
+        Ni = effective_Ni;
+    }
     uint32_t block_surface = Kld * Ni;
     uint32_t i0            = (block_surface * blockIdx.x) / Kld; // the value of the smallest i in the block
     uint32_t k             = threadIdx.x;       // block shape: (Kld, Ni)
     uint32_t i             = i0 + threadIdx.y;  // block shape: (Kld, Ni)
     if( i >= N ){return;} // out of bounds (no guarantee that N is a multiple of Kld)
-    if(i >= N - Ni){
-        block_surface = (N - i) * Kld;} // last block might not be full
+    __syncthreads();
     uint32_t j             = dvc_neighsLD[i * Kld + k]; 
     uint32_t tid           = threadIdx.x + threadIdx.y * Kld; // index within the block
 
@@ -299,10 +304,10 @@ __global__ void interactions_K_LD(uint32_t N, float* dvc_Xld_nester, uint32_t* d
         Xj[m] = dvc_Xld_nester[j * Mld + m];}
 
     // ~~~~~~~~~~~~~~~~~~~ Initialise shared memory ~~~~~~~~~~~~~~~~~~~
-    extern __shared__ float smem[];
-    float* Xi                   = &smem[(i - i0) * Mld];
-    float* momenta_update_i_T   = &smem[Ni*Mld + tid];  // stride for changing m: block_surface
-    float* momenta_update_j_T   = &smem[Ni*Mld + block_surface*Mld + tid]; // stride for changing m: block_surface
+    extern __shared__ float smem2[];
+    float* Xi                   = &smem2[(i - i0) * Mld];
+    float* momenta_update_i_T   = &smem2[Ni*Mld + tid];  // stride for changing m: block_surface
+    float* momenta_update_j_T   = &smem2[Ni*Mld + block_surface*Mld + tid]; // stride for changing m: block_surface
     if(k == 0){ // fetch Xi from DRAM
         #pragma unroll
         for (uint32_t m = 0u; m < Mld; m++) {
@@ -346,11 +351,11 @@ __global__ void interactions_K_LD(uint32_t N, float* dvc_Xld_nester, uint32_t* d
     
     // ~~~~~~~~~~~~~~~~~~~ aggregate wij for this block ~~~~~~~~~~~~~~~~~~~
     __syncthreads();
-    double* smem_double = (double*) &smem;
-    smem_double[tid]    = (double) wij;
-    parallel_1dsumReduction_double(smem_double, block_surface, tid);
+    double* smem_double2 = (double*) &smem2;
+    smem_double2[tid]    = (double) wij;
+    parallel_1dsumReduction_double(smem_double2, block_surface, tid);
     if(tid == 0u){
-        dvc_Qdenom_elements[blockIdx.x] = smem_double[0u]; }
+        dvc_Qdenom_elements[blockIdx.x] = smem_double2[0u]; }
 }
 
 
@@ -383,13 +388,16 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
     // ~~~~~~~~~~~~~~~~~~~ get i, k and j ~~~~~~~~~~~~~~~~~~~
     uint32_t Khd           = blockDim.x; // block shape: (Khd, Ni);  Khd is guaranteed to be >= 32u
     uint32_t Ni            = blockDim.y; // block shape: (Khd, Ni)
-    uint32_t block_surface = blockDim.x * blockDim.y; // Khd * Ni
+    // if last block: Ni is not guaranteed to be the same as usual
+    if(blockIdx.x == gridDim.x - 1u){
+        uint32_t effective_Ni = N - (blockIdx.x * Ni);
+        Ni = effective_Ni;
+    }
+    uint32_t block_surface = Khd * Ni; 
     uint32_t i0            = (block_surface * blockIdx.x) / Khd; // the value of the smallest i in the block
     uint32_t k             = threadIdx.x;
     uint32_t i             = i0 + threadIdx.y;
     if( i >= N ){return;} // out of bounds (no guarantee that N is a multiple of Ni)
-    if(i >= N - Ni){
-        block_surface = (N - i) * Khd;} // last block might not be full
     uint32_t j             = dvc_neighsHD[i * Khd + k]; 
     uint32_t tid           = threadIdx.x + threadIdx.y * Khd; // index within the block
 
@@ -402,10 +410,10 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
     float furthest_LDneighdist_i = __ldg(&furthest_neighdists_LD[i]);
 
     // ~~~~~~~~~~~~~~~~~~~ Initialise shared memory ~~~~~~~~~~~~~~~~~~~
-    extern __shared__ float smem[];
-    float* Xi                   = &smem[(i - i0) * Mld];
-    float* momenta_update_i_T   = &smem[Ni*Mld + tid];  // stride for changing m: block_surface
-    float* momenta_update_j_T   = &smem[Ni*Mld + block_surface*Mld + tid]; // stride for changing m: block_surface
+    extern __shared__ float smem1[];
+    float* Xi                   = &smem1[(i - i0) * Mld];
+    float* momenta_update_i_T   = &smem1[Ni*Mld + tid];  // stride for changing m: block_surface
+    float* momenta_update_j_T   = &smem1[Ni*Mld + block_surface*Mld + tid]; // stride for changing m: block_surface
     if(k == 0){ // fetch Xi from DRAM
         #pragma unroll
         for (uint32_t m = 0u; m < Mld; m++) {
@@ -439,7 +447,7 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
         for(uint32_t m = 0u; m < Mld; m++){
             atomicAdd(&dvc_momenta_attraction[i * Mld + m], momenta_update_i_T[m*block_surface]);}
     }
-    // write individual updates to j attraction momenta
+    // write individual updates to j attraction momenta (contention should be low because of the random access pattern)
     #pragma unroll
     for(uint32_t m = 0u; m < Mld; m++){
         atomicAdd(&dvc_momenta_attraction[j * Mld + m], momenta_update_j_T[m*block_surface]);}
@@ -479,33 +487,51 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
 
     // ~~~~~~~~~~~~~~~~~~~ aggregate wij for this block ~~~~~~~~~~~~~~~~~~~
     __syncthreads();
-    double* smem_double = (double*) &smem;
-    smem_double[tid]    = (double) wij;
-    parallel_1dsumReduction_double(smem_double, block_surface, tid); 
+    double* smem_double1 = (double*) &smem1;
+    smem_double1[tid]    = (double) wij;
+    parallel_1dsumReduction_double(smem_double1, block_surface, tid); 
     if(tid == 0u){
-        dvc_Qdenom_elements[blockIdx.x] = smem_double[0u];}
+        dvc_Qdenom_elements[blockIdx.x] = smem_double1[0u];}
     return;
 }
 
-void fill_raw_momenta_launch_cuda(cudaStream_t stream_HD, cudaStream_t stream_LD, cudaStream_t stream_FAR,\
-     uint32_t* Kern_HD_blockshape, uint32_t* Kern_HD_gridshape,uint32_t* Kern_LD_blockshape, uint32_t* Kern_LD_gridshape,uint32_t* Kern_FAR_blockshape, uint32_t* Kern_FAR_gridshape,\
+__global__ void final_sum_Qdenom_elements(double* dvc_Qdenom_elements, float* sum_Qdenom_elements, uint32_t n_elements_total){
+    extern __shared__ double smem4[];
+    uint32_t tid           = threadIdx.x;
+    uint32_t global_offset = blockIdx.x * blockDim.x;
+    if(global_offset + tid < n_elements_total){
+        smem4[tid] = dvc_Qdenom_elements[global_offset + tid];}
+    else{
+        smem4[tid] = 0.0;}
+    __syncthreads();
+    uint32_t n_elements = blockDim.x;
+    if(blockIdx.x == gridDim.x - 1u){
+        n_elements = n_elements_total - (blockIdx.x * blockDim.x); }
+    parallel_1dsumReduction_double(smem4, n_elements, tid);
+    if(tid == 0u){
+        atomicAdd(sum_Qdenom_elements, (float) smem4[0u]);}
+    return;
+}
+
+void fill_raw_momenta_launch_cuda(cudaStream_t stream_HD, cudaStream_t stream_LD, cudaStream_t stream_FAR, cudaStream_t stream_Qdenomsum,\
+     uint32_t* Kern_HD_blockshape, uint32_t* Kern_HD_gridshape,uint32_t* Kern_LD_blockshape, uint32_t* Kern_LD_gridshape,uint32_t* Kern_FAR_blockshape, uint32_t* Kern_FAR_gridshape, uint32_t* Kern_Qdenomsum_blockshape, uint32_t* Kern_Qdenomsum_gridshape,\
       uint32_t N, uint32_t Khd, float* dvc_Pij,\
       float* dvc_Xld_nester, uint32_t* dvc_neighsHD, uint32_t* dvc_neighsLD, float* furthest_neighdists_LD, float Qdenom_EMA,\
-       float alpha_cauchy, double* dvc_Qdenom_elements, uint32_t Qdenom_N_elements,\
+       float alpha_cauchy, double* dvc_Qdenom_elements, float* sum_Qdenom_elements, uint32_t Qdenom_N_elements,\
         float* dvc_momenta_attraction, float* dvc_momenta_repulsion, float* dvc_momenta_repulsion_far, float* temporary_furthest_neighdists,\
          uint32_t* random_numbers_size_NxRand){
     
-    
     // ~~~~~~~~~  clear momenta and dvc_Qdenom_elements (async)  ~~~~~~~~~
-    cudaMemsetAsync(dvc_Qdenom_elements, 0, Qdenom_N_elements * sizeof(double), stream_HD);
     cudaMemsetAsync(dvc_momenta_attraction, 0, N * Mld * sizeof(float), stream_HD);
     cudaMemsetAsync(dvc_momenta_repulsion, 0, N * Mld * sizeof(float), stream_LD);
     cudaMemsetAsync(dvc_momenta_repulsion_far, 0, N * Mld * sizeof(float), stream_FAR);
+    cudaMemsetAsync(dvc_Qdenom_elements, 0, Qdenom_N_elements * sizeof(double), stream_Qdenomsum);
+    cudaMemsetAsync(sum_Qdenom_elements, 0, sizeof(float), stream_Qdenomsum);
 
     // ~~~~~~~~~  prepare kernel calls ~~~~~~~~~
     // Kernel 1: HD neighbours
     uint32_t Kern_HD_block_surface = Kern_HD_blockshape[0] * Kern_HD_blockshape[1]; // N threads per block
-    // if((Kern_HD_block_surface % 32) != 0){printf("\n\nError: block size should be a multiple of 32\n");return;}
+    if((Kern_HD_block_surface % 32) != 0){printf("\n\nError: block size should be a multiple of 32\n");return;}
     uint32_t Kern_HD_sharedMemorySize = (uint32_t) (sizeof(float) * ((Kern_HD_blockshape[1] * Mld) + (Kern_HD_block_surface * (2u * Mld))));
     dim3 Kern_HD_grid(Kern_HD_gridshape[0], Kern_HD_gridshape[1]);
     dim3 Kern_HD_block(Kern_HD_blockshape[0], Kern_HD_blockshape[1]);
@@ -520,9 +546,15 @@ void fill_raw_momenta_launch_cuda(cudaStream_t stream_HD, cudaStream_t stream_LD
     dim3 Kern_FAR_grid(Kern_FAR_gridshape[0], Kern_FAR_gridshape[1]);
     dim3 Kern_FAR_block(Kern_FAR_blockshape[0], Kern_FAR_blockshape[1]);
     // kernel4 : sum wij samples
-    // uint32_t
+    uint32_t Kern_Qdenomsum_block_surface = Kern_Qdenomsum_blockshape[0] * Kern_Qdenomsum_blockshape[1]; 
+    uint32_t Kern_Qdenomsum_sharedMemorySize = (uint32_t) (sizeof(double) * Kern_Qdenomsum_block_surface);
+    dim3 Kern_Qdenomsum_grid(Kern_Qdenomsum_gridshape[0], Kern_Qdenomsum_gridshape[1]);
+    dim3 Kern_Qdenomsum_block(Kern_Qdenomsum_blockshape[0], Kern_Qdenomsum_blockshape[1]);
     
     // ~~~~~~~~~  launch kernels (and wait for async memset to finish)  ~~~~~~~~~
+    // wait for the Qdenom elements to be reset
+    cudaStreamSynchronize(stream_Qdenomsum);
+
     // kernel 1 : HD neighbours
     cudaStreamSynchronize(stream_HD); // wait for the momenta to clear
     interactions_K_HD<<<Kern_HD_grid, Kern_HD_block, Kern_HD_sharedMemorySize, stream_HD>>>(N, dvc_Pij, dvc_Xld_nester, dvc_neighsHD, furthest_neighdists_LD, Qdenom_EMA, alpha_cauchy, dvc_Qdenom_elements, dvc_momenta_attraction, dvc_momenta_repulsion);// launch the kernel 1
@@ -543,25 +575,19 @@ void fill_raw_momenta_launch_cuda(cudaStream_t stream_HD, cudaStream_t stream_LD
     cudaError_t err3 = cudaGetLastError();
     if (err3 != cudaSuccess) {printf("Error in kernel 3: %s\n", cudaGetErrorString(err3));}
 
-    // ~~~~~~~~~~~  memcpy for furthest_neighdists_LD  ~~~~~~~~~
-    // wait for the 1st kernel to finish (because it uses furthest_neighdists_LD)
-    cudaStreamSynchronize(stream_HD);
-    // wait for the 2nd kernel to finish (because it writes to temporary_furthest_neighdists)
-    cudaStreamSynchronize(stream_LD);
-    // do a memcpy from temporary_furthest_neighdists to furthest_neighdists_LD 
+    // ~~~~~~~~~~~  update furthest_neighdists_LD  ~~~~~~~~~
+    cudaStreamSynchronize(stream_HD); // wait for the 1st kernel to finish (because it USES      furthest_neighdists_LD)
+    cudaStreamSynchronize(stream_LD); // wait for the 2nd kernel to finish (because it WRITES TO temporary_furthest_neighdists)
     cudaMemcpyAsync(furthest_neighdists_LD, temporary_furthest_neighdists, N * sizeof(float), cudaMemcpyDeviceToDevice, stream_LD);
-    
 
-    // ~~~~~~~~~~~  sync streams  ~~~~~~~~~
-    cudaStreamSynchronize(stream_FAR);
+    // ~~~~~~~~~~~  now compute the Qdenom  ~~~~~~~~~
+    cudaStreamSynchronize(stream_FAR); // sync remaining stream
+    final_sum_Qdenom_elements<<<Kern_Qdenomsum_grid, Kern_Qdenomsum_block, Kern_Qdenomsum_sharedMemorySize, stream_Qdenomsum>>>(dvc_Qdenom_elements,sum_Qdenom_elements, Qdenom_N_elements);
+
+    // ~~~~~~~~~~~  sync last streams  ~~~~~~~~~
+    cudaStreamSynchronize(stream_Qdenomsum);
     cudaStreamSynchronize(stream_LD);
 
-    // ~~~~~~~~~~~  all streams are synced: now compute the Qdenom  ~~~~~~~~~
-    //  here : sum the block_offset first elements of dvc_Qdenom_elements
-    // faire plutot une copie sur CPU et la somme dans une boucle
-    printf("number of elements: %d\n", Qdenom_N_elements);
-    printf("here todo   ^  \n");
-   
     // TODO: ascend to godhood by using pretch CUDA instruction in assembly (Fermi architecture). The prefetch instruction is used to load the data from global memory to the L2 cache
 }
 

@@ -52,6 +52,7 @@ typedef struct {
     cudaStream_t stream_K_HD;
     cudaStream_t stream_K_LD;
     cudaStream_t stream_rand;
+    cudaStream_t stream_Qdenomsum;
 
     // things on GPU
     float*          Xld_base_cuda;     // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data
@@ -66,6 +67,7 @@ typedef struct {
     uint32_t*       random_numbers_size_NxRand_cuda;
     uint32_t        N_elements_of_Qdenom;
     double*         elements_of_Qdenom_cuda; // will be on GPU as a 1d-array
+    float*         sum_Qdenom_elements_cuda;
     float*          P_cuda; 
 } EmbeddingMaker_GPU;
 
@@ -96,11 +98,11 @@ void fill_raw_momenta_GPU(EmbeddingMaker_GPU* thing);
 void momenta_leak_GPU(EmbeddingMaker_GPU* thing);
 void apply_momenta_and_decay_GPU(EmbeddingMaker_GPU* thing);
 
-void fill_raw_momenta_launch_cuda(cudaStream_t, cudaStream_t, cudaStream_t,\
- uint32_t*, uint32_t*,uint32_t*, uint32_t*,uint32_t*, uint32_t*,\
+void fill_raw_momenta_launch_cuda(cudaStream_t, cudaStream_t, cudaStream_t, cudaStream_t,\
+ uint32_t*, uint32_t*,uint32_t*, uint32_t*,uint32_t*, uint32_t*,uint32_t*, uint32_t*,\
   uint32_t, uint32_t, float*,\
    float*, uint32_t*, uint32_t*, float*, float,\
-    float, double*, uint32_t,\
+    float, double*, float*, uint32_t,\
      float*, float*, float*, float*,\
       uint32_t*);
 #endif // EMBEDDING_MAKER_H
