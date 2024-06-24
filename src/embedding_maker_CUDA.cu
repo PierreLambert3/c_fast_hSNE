@@ -496,17 +496,6 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* dvc_Xld_nes
 }
 
 __global__ void final_sum_Qdenom_elements(double* dvc_Qdenom_elements, float* sum_Qdenom_elements, uint32_t n_elements_total){
-
-
-    /* if(blockIdx.x == 0 && threadIdx.x == 0){
-        double sum = 0.0;
-        for(uint32_t i = 0u; i < n_elements_total; i++){
-            sum += (float) dvc_Qdenom_elements[i];
-        }
-        printf("\n\nsum = %f\n\n", sum);
-    } */
-
-
     extern __shared__ double smem4[];
     uint32_t tid           = threadIdx.x;
     uint32_t global_offset = blockIdx.x * blockDim.x;

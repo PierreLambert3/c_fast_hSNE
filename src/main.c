@@ -69,11 +69,6 @@ void init_Xld(float** Xhd, float** Xld, uint32_t N, uint32_t Mhd) {
     free_matrix((void**)Wproj, Mhd);
     // normalise Xld to have mean 0 and variance 1
     normalise_float_matrix(Xld, N, Mld);
-    for (uint32_t i = 0; i < N; i++) {
-        for (uint32_t j = 0; j < Mld; j++) {
-            Xld[i][j] =  rand_float_between(&rand_state, -1.0f, 1.0f);
-        }
-    }
 }
     
 void init_neighbours_randomly(uint32_t N, uint32_t M, float** X, uint32_t K, uint32_t** neighs, float* furthest_neighdists) {

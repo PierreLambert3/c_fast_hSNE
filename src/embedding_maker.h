@@ -57,9 +57,13 @@ typedef struct {
     // things on GPU
     float*          Xld_base_cuda;     // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data
     float*          Xld_nesterov_cuda; // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data
+
     float*          momenta_attraction_cuda;   // will be on GPU as a 1d-array, use momenta_attraction[N] to access the 1d data
     float*          momenta_repulsion_far_cuda;  // this will leak to neighbours 
     float*          momenta_repulsion_cuda;
+
+    
+
     uint32_t*       neighsLD_cuda;
     uint32_t*       neighsHD_cuda;
     float*          furthest_neighdists_LD_cuda;

@@ -77,7 +77,7 @@ void destroy_NeighLDDiscoverer(NeighLDDiscoverer* thing){
 
 bool attempt_to_add_LD_neighbour(uint32_t i, uint32_t j, float euclsq_ij, SubthreadData* thing){
     // 1: can trust dists in LD : recompute all dists to find the 2 furthest neighbours
-    /* float furthest_d_i = -1.0f;
+    float furthest_d_i = -1.0f;
     float second_furthest_d_i = -1.0f;
     uint32_t furthest_k = 0u;
     // !!!!!!!!!!!  unsafe here: j position is not locked !!!!!!!!!!!!!!!!!
@@ -105,8 +105,7 @@ bool attempt_to_add_LD_neighbour(uint32_t i, uint32_t j, float euclsq_ij, Subthr
         thing->furthest_neighdists_LD[i] = furthest_d_i;
         pthread_mutex_unlock(&thing->mutexes_sizeN[i]);
         return false;
-    } */
-   return false;
+    }
 }
 
 void refine_LD_neighbours(SubthreadData* thing){
