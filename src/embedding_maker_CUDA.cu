@@ -285,11 +285,15 @@ __global__ void leak_kernel(uint32_t N, uint32_t* cu_neighsLD, float* momenta_sr
     uint32_t j             = cu_neighsLD[i * Kld + k]; 
     uint32_t tid           = threadIdx.x + threadIdx.y * Kld; // index within the block
 
-    // ~~~~~~~~~~~~~~~~~~~ Initialise registers: source from j ~~~~~~~~~~~~~~~~~~~
+     // ~~~~~~~~~~~~~~~~~~~ Initialise registers: source from j ~~~~~~~~~~~~~~~~~~~
     float src_j[Mld];
     #pragma unroll
     for (uint32_t m = 0u; m < Mld; m++) { // fetch source from DRAM
-        src_j[m] = momenta_src[j*Mld + m];}
+        src_j[m] = momenta_src[j*Mld + m];
+        // add a random value
+        /* uint32_t seed = i + j + m + k;
+        src_j[m] += (float) random_uint32_t_xorshift32(&seed) * 0.00000000023283064365386962890625f; */
+        }
 
     // ~~~~~~~~~~~~~~~~~~~ Initialise shared memory ~~~~~~~~~~~~~~~~~~~
     extern __shared__ float smem5[];
@@ -302,8 +306,51 @@ __global__ void leak_kernel(uint32_t N, uint32_t* cu_neighsLD, float* momenta_sr
     }
     __syncthreads();
 
+    // ~~~~~~~~~~~~~~~~~~~ compte leak & save to memory ~~~~~~~~~~~~~~~~~~~
+    // raw leak: 0.5 * (src_i + src_j)
+    #pragma unroll
+    for(uint32_t m = 0u; m < Mld; m++){
+        float mean_v = 0.5 * (src_i[m] + src_j[m]);
+        rcv_ik[m*this_block_surface] = mean_v;
+    } 
 
-    continuer ici
+
+    // vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+    // vvvvvvvvvvvvvvv  quick sum to see   vvvvvvvvvvvvvvv
+    float sums0[Mld];
+    if(k == 0){
+        #pragma unroll
+        for(uint32_t m = 0u; m < Mld; m++){
+            sums0[m] = 0.0f;
+            for(uint32_t kk = 0u; kk < Kld; kk++){
+                sums0[m] += rcv_ik[m*this_block_surface + kk];
+            }
+        }
+    }
+    // vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+
+    // parallel sum reduction
+    periodic_sumReduction_on_matrix(rcv_ik, Mld, this_block_surface, Kld, k);
+    
+
+c'est ok le periodic reduction marche.cu_neighsLD
+du coup fire les atomic add (de reduction pourk ==0   et  puis vers j pour tout le monde)
+
+
+
+    // vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+    // quick check of the parallel reduction
+    if(k == 0){
+        for(uint32_t m = 0u; m < Mld; m++){
+            float sum_prev = sums0[m];
+            float sum_now  = rcv_ik[m*this_block_surface];
+            printf("%.4e %.4e\n", sum_prev, sum_now);
+        }
+    }
+    // vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+    
+
+
 
     return;
 }

@@ -299,10 +299,16 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     nthreads_ok = (Kern5_Ni) * Kld <= (uint32_t) prop.maxThreadsPerBlock;
     if(!smem_ok_Kern5 || !blocksize_ok_Kern5 || !nthreads_ok){
         dying_breath("could not find a suitable block size for the kernel 5");}
+    thing->Kern_leak_blockshape[0] = Kld;
+    thing->Kern_leak_blockshape[1] = Kern5_Ni; // Ni!
+    thing->Kern_leak_blockshape[2] = 1u;
+    thing->Kern_leak_gridshape[0]  = (N*Kld + (Kld * Kern5_Ni) - 1u) / (Kld * Kern5_Ni);
+
+
     printf("\nblock shapes for kernel 5: (%u, %u)\n", Kld, Kern5_Ni);
     printf("memory usage and maxima for kernel 5: smem_N_floats, %u target_n_floats_smem, %u  \n", smem_N_floats_Kern5, target_n_floats_smem);
     printf("number of threads per block: %u\n", Kld* Kern5_Ni);
-    printf("\n");
+    printf("grid shape for kernel 5: %u\n\n", thing->Kern_leak_gridshape[0]);
     printf("\n");
     printf("\n");
 }
