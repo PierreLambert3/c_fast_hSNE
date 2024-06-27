@@ -19,6 +19,9 @@ using define is very very stupid
 // number of neighs to consider in LD
 #define Kld 16u  
 
+// how much we leak the far relationships to nearby points (1 = full leak, 0 = no leak)
+#define LEAK_ALPHA 0.5f
+
 // target dimensionality of the embedding
 #define Mld 2u
 

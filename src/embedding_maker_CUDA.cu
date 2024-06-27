@@ -176,6 +176,10 @@ __device__ void parallel_1dsumReduction_double(double* vector, uint32_t n, uint3
 
 /*periodic_sumReduction_on_matrix(momenta_update_i_T, Mld, block_surface, NB_RANDOM_POINTS_FAR_REPULSION, k);        |
         |[----- Mld -----]|
+        |[----- Mld -----]|
+        |[----- Mld -----]|
+        |[----- Mld -----]|
+        |[----- Mld -----]|
         --------------------------------------
         | M | M | M | M | ... | M | M | M | M |    
         | l | l | l | l | ... | l | l | l | l |    momentum for i (m1)
@@ -190,19 +194,18 @@ __global__ void interactions_far(uint32_t N, float* cu_Xld_nesterov, float Qdeno
         float alpha_cauchy, double* cu_elements_of_Qdenom, float* cu_nudge_FAR,\
         uint32_t* cu_random_numbers_size_NxRand){
     // ~~~~~~~~~~~~~~~~~~~ get i, k and j ~~~~~~~~~~~~~~~~~~~
-    uint32_t Ni            = blockDim.y; // block shape: (NB_RANDOM_POINTS_FAR_REPULSION, Ni)
+    uint32_t this_Ni = blockDim.y; // block shape: (NB_RANDOM_POINTS_FAR_REPULSION, Ni)
     // if last block: Ni is not guaranteed to be the same as usual
     if(blockIdx.x == gridDim.x - 1u){
-        uint32_t effective_Ni = N - (blockIdx.x * Ni);
-        Ni = effective_Ni;
-    }
-    uint32_t block_surface = NB_RANDOM_POINTS_FAR_REPULSION * Ni;
-    uint32_t i0            = (block_surface * blockIdx.x) / NB_RANDOM_POINTS_FAR_REPULSION; // the value of the smallest i in the block
+        this_Ni = N - (blockIdx.x * blockDim.y);}
+    uint32_t this_block_surface = NB_RANDOM_POINTS_FAR_REPULSION * this_Ni;
+    uint32_t i0            = blockDim.y * blockIdx.x; // the value of the smallest i in the block
     uint32_t k             = threadIdx.x;       // block shape: (NB_RANDOM_POINTS_FAR_REPULSION, Ni)
     uint32_t i             = i0 + threadIdx.y;  // block shape: (NB_RANDOM_POINTS_FAR_REPULSION, Ni)
     if( i >= N ){return;} // out of bounds
     uint32_t tid           = threadIdx.x + threadIdx.y * NB_RANDOM_POINTS_FAR_REPULSION; // index within the block
     uint32_t j             = cu_random_numbers_size_NxRand[i * NB_RANDOM_POINTS_FAR_REPULSION + k] % N;
+
 
     // ~~~~~~~~~~~~~~~~~~~ Initialise registers: Xj ~~~~~~~~~~~~~~~~~~~
     float Xj[Mld];
@@ -213,7 +216,7 @@ __global__ void interactions_far(uint32_t N, float* cu_Xld_nesterov, float Qdeno
     // ~~~~~~~~~~~~~~~~~~~ Initialise shared memory ~~~~~~~~~~~~~~~~~~~
     extern __shared__ float smem3[];
     float* Xi                   = &smem3[(i - i0) * Mld];
-    float* momenta_update_i_T   = &smem3[Ni*Mld + tid];  // stride for changing m: block_surface
+    float* momenta_update_i_T   = &smem3[this_Ni*Mld + tid];  // stride for changing m: block_surface
     if(k == 0){ // fetch Xi from DRAM
         #pragma unroll
         for (uint32_t m = 0u; m < Mld; m++) {
@@ -230,15 +233,15 @@ __global__ void interactions_far(uint32_t N, float* cu_Xld_nesterov, float Qdeno
     float common_repulsion_gradient_multiplier  = -(wij * __frcp_rn(Qdenom_EMA)) * (2.0f * powf(wij, __frcp_rn(alpha_cauchy)));
     #pragma unroll
     for(uint32_t m = 0u; m < Mld; m++){
-        momenta_update_i_T[m*block_surface] = -(Xi[m] - Xj[m]) * common_repulsion_gradient_multiplier; // i movement
+        momenta_update_i_T[m*this_block_surface] = -(Xi[m] - Xj[m]) * common_repulsion_gradient_multiplier; // i movement
     }
     // aggregate the individual updates
-    periodic_sumReduction_on_matrix(momenta_update_i_T, Mld, block_surface, NB_RANDOM_POINTS_FAR_REPULSION, k);
+    periodic_sumReduction_on_matrix(momenta_update_i_T, Mld, this_block_surface, NB_RANDOM_POINTS_FAR_REPULSION, k);
     // write to global memory for point i
     if(k == 0u){
         #pragma unroll
         for(uint32_t m = 0u; m < Mld; m++){
-            atomicAdd(&cu_nudge_FAR[i * Mld + m], momenta_update_i_T[m*block_surface]);}
+            atomicAdd(&cu_nudge_FAR[i * Mld + m], momenta_update_i_T[m*this_block_surface]);}
     }
 
     // ~~~~~~~~~~~~~~~~~~~ update the new seed for next iteration ~~~~~~~~~~~~~~~~~~~
@@ -248,11 +251,19 @@ __global__ void interactions_far(uint32_t N, float* cu_Xld_nesterov, float Qdeno
     __syncthreads();
     double* smem_double3 = (double*) &smem3;
     smem_double3[tid]    = (double) wij;
-    parallel_1dsumReduction_double(smem_double3, block_surface, tid);
+    parallel_1dsumReduction_double(smem_double3, this_block_surface, tid);
     if(tid == 0u){
         cu_elements_of_Qdenom[blockIdx.x] = smem_double3[0u];}
     return;
 }
+
+
+
+__global__ void leak_kernel(float* momentum_src, float* momentum_rcv){
+    // LEAK_ALPHA : 1 is big leak, 0 is small leak
+    return;
+}
+
 
 
 /* visual representation of shared memory:
@@ -276,14 +287,12 @@ __global__ void interactions_far(uint32_t N, float* cu_Xld_nesterov, float Qdeno
 __global__ void interactions_K_LD(uint32_t N, float* cu_Xld_nesterov, uint32_t* cu_neighsLD, float Qdenom_EMA,\
         float alpha_cauchy, double* cu_elements_of_Qdenom, float* cu_nudge_repuls_HDLD, float* cu_temporary_furthest_neighdists_LD){
     // ~~~~~~~~~~~~~~~~~~~ get i, k and j ~~~~~~~~~~~~~~~~~~~
-    uint32_t Ni            = blockDim.y; // block shape: (Kld, Ni)
+    uint32_t this_Ni = blockDim.y; // block shape: (Kld, Ni)
     // if last block: Ni is not guaranteed to be the same as usual
     if(blockIdx.x == gridDim.x - 1u){
-        uint32_t effective_Ni = N - (blockIdx.x * Ni);
-        Ni = effective_Ni;
-    }
-    uint32_t block_surface = Kld * Ni;
-    uint32_t i0            = (block_surface * blockIdx.x) / Kld; // the value of the smallest i in the block
+        this_Ni = N - (blockIdx.x * blockDim.y);}
+    uint32_t this_block_surface = Kld * this_Ni;
+    uint32_t i0            = blockDim.y * blockIdx.x; // the value of the smallest i in the block
     uint32_t k             = threadIdx.x;       // block shape: (Kld, Ni)
     uint32_t i             = i0 + threadIdx.y;  // block shape: (Kld, Ni)
     if( i >= N ){return;} // out of bounds (no guarantee that N is a multiple of Kld)
@@ -300,8 +309,8 @@ __global__ void interactions_K_LD(uint32_t N, float* cu_Xld_nesterov, uint32_t* 
     // ~~~~~~~~~~~~~~~~~~~ Initialise shared memory ~~~~~~~~~~~~~~~~~~~
     extern __shared__ float smem2[];
     float* Xi                   = &smem2[(i - i0) * Mld];
-    float* momenta_update_i_T   = &smem2[Ni*Mld + tid];  // stride for changing m: block_surface
-    float* momenta_update_j_T   = &smem2[Ni*Mld + block_surface*Mld + tid]; // stride for changing m: block_surface
+    float* momenta_update_i_T   = &smem2[this_Ni*Mld + tid];  // stride for changing m: block_surface
+    float* momenta_update_j_T   = &smem2[this_Ni*Mld + this_block_surface*Mld + tid]; // stride for changing m: block_surface
     if(k == 0){ // fetch Xi from DRAM
         #pragma unroll
         for (uint32_t m = 0u; m < Mld; m++) {
@@ -321,25 +330,25 @@ __global__ void interactions_K_LD(uint32_t N, float* cu_Xld_nesterov, uint32_t* 
     #pragma unroll
     for(uint32_t m = 0u; m < Mld; m++){
         float gradient = (Xi[m] - Xj[m]) * common_repulsion_gradient_multiplier;
-        momenta_update_i_T[m*block_surface] = -gradient; // i movement
-        momenta_update_j_T[m*block_surface] =  gradient; // j movement
+        momenta_update_i_T[m*this_block_surface] = -gradient; // i movement
+        momenta_update_j_T[m*this_block_surface] =  gradient; // j movement
     }
     // aggregate the individual updates
-    periodic_sumReduction_on_matrix(momenta_update_i_T, Mld, block_surface, Kld, k);
+    periodic_sumReduction_on_matrix(momenta_update_i_T, Mld, this_block_surface, Kld, k);
     // write to global memory for point i
     if(k == 0u){
         #pragma unroll
         for(uint32_t m = 0u; m < Mld; m++){
-            atomicAdd(&cu_nudge_repuls_HDLD[i * Mld + m], momenta_update_i_T[m*block_surface]);}
+            atomicAdd(&cu_nudge_repuls_HDLD[i * Mld + m], momenta_update_i_T[m*this_block_surface]);}
     }
     // write individual updates to j repulsion momenta
     #pragma unroll
     for(uint32_t m = 0u; m < Mld; m++){
-        atomicAdd(&cu_nudge_repuls_HDLD[j * Mld + m], momenta_update_j_T[m*block_surface]);}
+        atomicAdd(&cu_nudge_repuls_HDLD[j * Mld + m], momenta_update_j_T[m*this_block_surface]);}
 
     // ~~~~~~~~~~~~~~~~~~~ find the fursthest neighbour distance in LD and save it ~~~~~~~~~~~~~~~~~~~
     momenta_update_i_T[0] = eucl_sq; // start by writing eucl to shared memory
-    periodic_maxReduction_on_matrix(momenta_update_i_T, 1u, block_surface, Kld, k); // find the furthest neighbour distance in LD (parallel reduction)
+    periodic_maxReduction_on_matrix(momenta_update_i_T, 1u, this_block_surface, Kld, k); // find the furthest neighbour distance in LD (parallel reduction)
     if(k == 0u){ // save to global memory for point i
         cu_temporary_furthest_neighdists_LD[i] = momenta_update_i_T[0];}
     
@@ -347,7 +356,7 @@ __global__ void interactions_K_LD(uint32_t N, float* cu_Xld_nesterov, uint32_t* 
     __syncthreads();
     double* smem_double2 = (double*) &smem2;
     smem_double2[tid]    = (double) wij;
-    parallel_1dsumReduction_double(smem_double2, block_surface, tid);
+    parallel_1dsumReduction_double(smem_double2, this_block_surface, tid);
     if(tid == 0u){
         cu_elements_of_Qdenom[blockIdx.x] = smem_double2[0u]; }
 }
@@ -381,14 +390,12 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* cu_Xld_nest
         float* cu_nudge_repuls_HDLD){
     // ~~~~~~~~~~~~~~~~~~~ get i, k and j ~~~~~~~~~~~~~~~~~~~
     uint32_t Khd           = blockDim.x; // block shape: (Khd, Ni);  Khd is guaranteed to be >= 32u
-    uint32_t Ni            = blockDim.y; // block shape: (Khd, Ni)
+    uint32_t this_Ni       = blockDim.y; // block shape: (Khd, Ni)
     // if last block: Ni is not guaranteed to be the same as usual
     if(blockIdx.x == gridDim.x - 1u){
-        uint32_t effective_Ni = N - (blockIdx.x * Ni);
-        Ni = effective_Ni;
-    }
-    uint32_t block_surface = Khd * Ni; 
-    uint32_t i0            = (block_surface * blockIdx.x) / Khd; // the value of the smallest i in the block
+        this_Ni = N - (blockIdx.x * blockDim.y);}
+    uint32_t this_block_surface = Khd * this_Ni; 
+    uint32_t i0            = blockDim.y * blockIdx.x; // the value of the smallest i in the block
     uint32_t k             = threadIdx.x;
     uint32_t i             = i0 + threadIdx.y;
     if( i >= N ){return;} // out of bounds (no guarantee that N is a multiple of Ni)
@@ -406,8 +413,8 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* cu_Xld_nest
     // ~~~~~~~~~~~~~~~~~~~ Initialise shared memory ~~~~~~~~~~~~~~~~~~~
     extern __shared__ float smem1[];
     float* Xi                   = &smem1[(i - i0) * Mld];
-    float* momenta_update_i_T   = &smem1[Ni*Mld + tid];  // stride for changing m: block_surface
-    float* momenta_update_j_T   = &smem1[Ni*Mld + block_surface*Mld + tid]; // stride for changing m: block_surface
+    float* momenta_update_i_T   = &smem1[this_Ni*Mld + tid];  // stride for changing m: block_surface
+    float* momenta_update_j_T   = &smem1[this_Ni*Mld + this_block_surface*Mld + tid]; // stride for changing m: block_surface
     if(k == 0){ // fetch Xi from DRAM
         #pragma unroll
         for (uint32_t m = 0u; m < Mld; m++) {
@@ -430,21 +437,21 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* cu_Xld_nest
     #pragma unroll
     for(uint32_t m = 0u; m < Mld; m++){
         float gradient = (Xi[m] - Xj[m]) * common_attraction_gradient_multiplier;
-        momenta_update_i_T[m*block_surface] = -gradient; // i movement
-        momenta_update_j_T[m*block_surface] =  gradient; // j movement
+        momenta_update_i_T[m*this_block_surface] = -gradient; // i movement
+        momenta_update_j_T[m*this_block_surface] =  gradient; // j movement
     }
     // aggregate the individual updates
-    periodic_sumReduction_on_matrix(momenta_update_i_T, Mld, block_surface, Khd, k);
+    periodic_sumReduction_on_matrix(momenta_update_i_T, Mld, this_block_surface, Khd, k);
     // write aggregated to global memory for point i
     if(k == 0u){
         #pragma unroll
         for(uint32_t m = 0u; m < Mld; m++){
-            atomicAdd(&cu_nudge_attrac_HD[i * Mld + m], momenta_update_i_T[m*block_surface]);}
+            atomicAdd(&cu_nudge_attrac_HD[i * Mld + m], momenta_update_i_T[m*this_block_surface]);}
     }
     // write individual updates to j attraction momenta (contention should be low because of the random access pattern)
     #pragma unroll
     for(uint32_t m = 0u; m < Mld; m++){
-        atomicAdd(&cu_nudge_attrac_HD[j * Mld + m], momenta_update_j_T[m*block_surface]);}
+        atomicAdd(&cu_nudge_attrac_HD[j * Mld + m], momenta_update_j_T[m*this_block_surface]);}
 
     // ~~~~~~~~~~~~~~~~~~~ repulsive forces ~~~~~~~~~~~~~~~~~~~
     // individual updates to momenta for repulsion
@@ -455,35 +462,35 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* cu_Xld_nest
         #pragma unroll
         for(uint32_t m = 0u; m < Mld; m++){
             float gradient = (Xi[m] - Xj[m]) * common_repulsion_gradient_multiplier;
-            momenta_update_i_T[m*block_surface] = -gradient; // i movement
-            momenta_update_j_T[m*block_surface] =  gradient; // j movement
+            momenta_update_i_T[m*this_block_surface] = -gradient; // i movement
+            momenta_update_j_T[m*this_block_surface] =  gradient; // j movement
         }
     }
     else{ // important to set to zero, else the aggregation will be wrong
         #pragma unroll
         for(uint32_t m = 0u; m < Mld; m++){
-            momenta_update_i_T[m*block_surface] = 0.0f;
-            momenta_update_j_T[m*block_surface] = 0.0f;
+            momenta_update_i_T[m*this_block_surface] = 0.0f;
+            momenta_update_j_T[m*this_block_surface] = 0.0f;
         }
     }
     // aggregate the individual updates
-    periodic_sumReduction_on_matrix(momenta_update_i_T, Mld, block_surface, Khd, k);
+    periodic_sumReduction_on_matrix(momenta_update_i_T, Mld, this_block_surface, Khd, k);
     // write to global memory for point i
     if(k == 0u){
         #pragma unroll
         for(uint32_t m = 0u; m < Mld; m++){
-            atomicAdd(&cu_nudge_repuls_HDLD[i * Mld + m], momenta_update_i_T[m*block_surface]);}
+            atomicAdd(&cu_nudge_repuls_HDLD[i * Mld + m], momenta_update_i_T[m*this_block_surface]);}
     }
     // write individual updates to j repulsion momenta
     #pragma unroll
     for(uint32_t m = 0u; m < Mld; m++){
-        atomicAdd(&cu_nudge_repuls_HDLD[j * Mld + m], momenta_update_j_T[m*block_surface]);}
+        atomicAdd(&cu_nudge_repuls_HDLD[j * Mld + m], momenta_update_j_T[m*this_block_surface]);}
 
     // ~~~~~~~~~~~~~~~~~~~ aggregate wij for this block ~~~~~~~~~~~~~~~~~~~
     __syncthreads();
     double* smem_double1 = (double*) &smem1;
     smem_double1[tid]    = (double) wij;
-    parallel_1dsumReduction_double(smem_double1, block_surface, tid); 
+    parallel_1dsumReduction_double(smem_double1, this_block_surface, tid); 
     if(tid == 0u){
         cu_elements_of_Qdenom[blockIdx.x] = smem_double1[0u];}
     return;
@@ -508,10 +515,10 @@ __global__ void final_sum_Qdenom_elements(double* cu_elements_of_Qdenom, float* 
 }
 
 void cuda_launch___fill_nudges_and_leak(cudaStream_t stream_nudge_HD, cudaStream_t stream_nudge_LD, cudaStream_t stream_nudge_FAR, cudaStream_t stream_Qdenomsum, cudaStream_t stream_leak,\
-     uint32_t* Kern_HD_blockshape, uint32_t* Kern_HD_gridshape,uint32_t* Kern_LD_blockshape, uint32_t* Kern_LD_gridshape,uint32_t* Kern_FAR_blockshape, uint32_t* Kern_FAR_gridshape, uint32_t* Kern_Qdenomsum_blockshape, uint32_t* Kern_Qdenomsum_gridshape,\
-      uint32_t N, uint32_t Khd, float* cu_P,\
-      float* cu_Xld_nesterov, uint32_t* cu_neighsHD, uint32_t* cu_neighsLD, float* cu_furthest_neighdists_LD, float Qdenom_EMA,\
-       float alpha_cauchy, double* cu_elements_of_Qdenom, float* cu_sum_Qdenom_elements, float* cpu_sum_Qdenom_elements, uint32_t Qdenom_N_elements,\
+        uint32_t* Kern_HD_blockshape, uint32_t* Kern_HD_gridshape,uint32_t* Kern_LD_blockshape, uint32_t* Kern_LD_gridshape,uint32_t* Kern_FAR_blockshape, uint32_t* Kern_FAR_gridshape, uint32_t* Kern_Qdenomsum_blockshape, uint32_t* Kern_Qdenomsum_gridshape,  uint32_t* Kern_leak_blockshape, uint32_t* Kern_leak_gridshape,\
+        uint32_t N, uint32_t Khd, float* cu_P,\
+        float* cu_Xld_nesterov, uint32_t* cu_neighsHD, uint32_t* cu_neighsLD, float* cu_furthest_neighdists_LD, float Qdenom_EMA,\
+        float alpha_cauchy, double* cu_elements_of_Qdenom, float* cu_sum_Qdenom_elements, float* cpu_sum_Qdenom_elements, uint32_t Qdenom_N_elements,\
         float* cu_nudge_attrac_HD, float* cu_nudge_repuls_HDLD, float* cu_nudge_FAR, float* cu_temporary_furthest_neighdists_LD,\
         uint32_t* cu_random_numbers_size_NxRand,\
         float* momentum_src_leak, float* momentum_rcv_leak){
@@ -522,6 +529,9 @@ void cuda_launch___fill_nudges_and_leak(cudaStream_t stream_nudge_HD, cudaStream
     cudaMemsetAsync(cu_nudge_FAR, 0, N * Mld * sizeof(float), stream_nudge_FAR);
     cudaMemsetAsync(cu_elements_of_Qdenom, 0, Qdenom_N_elements * sizeof(double), stream_Qdenomsum);
     cudaMemsetAsync(cu_sum_Qdenom_elements, 0, sizeof(float), stream_Qdenomsum);
+
+    // ~~~~~~~~~  clear the receiving momentum ~~~~~~~~~
+    cudaMemsetAsync(momentum_rcv_leak, 0, N * Mld * sizeof(float), stream_leak);
 
     // ~~~~~~~~~  prepare kernel calls ~~~~~~~~~
     // Kernel 1: HD neighbours
@@ -545,7 +555,11 @@ void cuda_launch___fill_nudges_and_leak(cudaStream_t stream_nudge_HD, cudaStream
     uint32_t Kern_Qdenomsum_sharedMemorySize = (uint32_t) (sizeof(double) * Kern_Qdenomsum_block_surface);
     dim3 Kern_Qdenomsum_grid(Kern_Qdenomsum_gridshape[0], Kern_Qdenomsum_gridshape[1]);
     dim3 Kern_Qdenomsum_block(Kern_Qdenomsum_blockshape[0], Kern_Qdenomsum_blockshape[1]);
-    
+    // kernel 5: leak   block: (Kld, Ni)
+    uint32_t leak_block_surface = Kern_leak_blockshape[0] * Kern_leak_blockshape[1]; // N threads per block
+    uint32_t leak_sharedMemorySize = (uint32_t) (sizeof(float) * ((Kern_leak_blockshape[1] * Mld) + (Kld * Kern_leak_blockshape[1] * Mld)));
+    dim3 Kern_leak_grid(Kern_leak_gridshape[0], Kern_leak_gridshape[1]);
+    dim3 Kern_leak_block(Kern_leak_blockshape[0], Kern_leak_blockshape[1]);
 
 
     // ~~~~~~~~~  launch kernels (and wait for async memset to finish)  ~~~~~~~~~
@@ -572,6 +586,12 @@ void cuda_launch___fill_nudges_and_leak(cudaStream_t stream_nudge_HD, cudaStream
     cudaError_t err3 = cudaGetLastError();
     if (err3 != cudaSuccess) {printf("Error in kernel 3: %s\n", cudaGetErrorString(err3));}
 
+    // kernel 5 : leak the momenta
+    cudaStreamSynchronize(stream_leak);
+    leak_kernel<<<Kern_leak_grid, Kern_leak_block, leak_sharedMemorySize, stream_leak>>>(momentum_src_leak, momentum_rcv_leak);
+    cudaError_t err5 = cudaGetLastError();
+    if (err5 != cudaSuccess) {printf("Error in kernel 5: %s\n", cudaGetErrorString(err5));}
+
     // ~~~~~~~~~~~  update cu_furthest_neighdists_LD  ~~~~~~~~~
     cudaStreamSynchronize(stream_nudge_HD); // wait for the 1st kernel to finish (because it USES      cu_furthest_neighdists_LD)
     cudaStreamSynchronize(stream_nudge_LD); // wait for the 2nd kernel to finish (because it WRITES TO cu_temporary_furthest_neighdists_LD)
@@ -582,9 +602,10 @@ void cuda_launch___fill_nudges_and_leak(cudaStream_t stream_nudge_HD, cudaStream
     final_sum_Qdenom_elements<<<Kern_Qdenomsum_grid, Kern_Qdenomsum_block, Kern_Qdenomsum_sharedMemorySize, stream_Qdenomsum>>>(cu_elements_of_Qdenom, cu_sum_Qdenom_elements, Qdenom_N_elements);
     cudaMemcpyAsync(cpu_sum_Qdenom_elements, cu_sum_Qdenom_elements, sizeof(float), cudaMemcpyDeviceToHost, stream_Qdenomsum);
 
-    // ~~~~~~~~~~~  sync last streams  ~~~~~~~~~
+    // ~~~~~~~~~~~  sync last streams: we want everybody to be done here  ~~~~~~~~~
     cudaStreamSynchronize(stream_Qdenomsum);
     cudaStreamSynchronize(stream_nudge_LD);
+    cudaStreamSynchronize(stream_leak);
 
     // TODO: ascend to godhood by using pretch CUDA instruction in assembly (Fermi architecture). The prefetch instruction is used to load the data from global memory to the L2 cache
 }

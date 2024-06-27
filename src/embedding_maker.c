@@ -275,13 +275,13 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
 
     // ~~~~~~~~~  Kernel 5: leaking momenta  ~~~~~~~~~
     // grid 1d ; block 2d : (Kld, Ni)
-    // smem_N_floats        : Ni * Mld  * 2u
+    // smem_N_floats        : Ni * Mld  + Ni*Kld*Mld
     // registers_N_floats   : Ni * Mld
     thing->Kern_leak_gridshape  = malloc_uint32_t(3, 1u);
     thing->Kern_leak_blockshape = malloc_uint32_t(3, 1u);
     uint32_t Kern5_Ni = 1u;
     while(true){
-        uint32_t next_smem_N_floats = (Kern5_Ni + 1u) * Mld * 2u;
+        uint32_t next_smem_N_floats = (Kern5_Ni + 1u) * Mld + (Kern5_Ni + 1u) * Kld * Mld;
         uint32_t next_reg_N_floats  = (Kern5_Ni + 1u) * Mld;
         bool next_smem_ok = next_smem_N_floats <= target_n_floats_smem;
         bool next_reg_ok  = next_reg_N_floats  <= target_n_floats_regs;
@@ -293,7 +293,7 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
         
         Kern5_Ni++;
     }
-    uint32_t smem_N_floats_Kern5 = Kern5_Ni * Mld * 2u;
+    uint32_t smem_N_floats_Kern5 = Kern5_Ni * Mld + Kern5_Ni * Kld * Mld;
     bool smem_ok_Kern5 = smem_N_floats_Kern5 <= target_n_floats_smem;
     bool blocksize_ok_Kern5 = (Kern5_Ni) <= (uint32_t) prop.maxThreadsDim[1];
     nthreads_ok = (Kern5_Ni) * Kld <= (uint32_t) prop.maxThreadsPerBlock;
@@ -302,12 +302,17 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     printf("\nblock shapes for kernel 5: (%u, %u)\n", Kld, Kern5_Ni);
     printf("memory usage and maxima for kernel 5: smem_N_floats, %u target_n_floats_smem, %u  \n", smem_N_floats_Kern5, target_n_floats_smem);
     printf("number of threads per block: %u\n", Kld* Kern5_Ni);
-    die();
+    printf("\n");
+    printf("\n");
+    printf("\n");
 }
 
 // 1: gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion
 // 2: this also recomputes the furthest_neighdists_LD
 void fill_nudges_GPU(EmbeddingMaker_GPU* thing){
+    printf("ajouter -fastmath et cie\n");
+    printf("liste des optimisations: -ffast-math  -funsafe-math-optimizations -ffinite-math-only -fno-trapping-math -fassociative-math -freciprocal-math -fmerge-all-constants -Ofast  (YOLO)\n");
+
     // get the alpha hyperparameter, for the simplified Cauchy kernel
     pthread_mutex_lock(thing->mutex_hparam_LDkernel_alpha);
     float cauchy_alpha = thing->hparam_LDkernel_alpha[0];
@@ -327,7 +332,7 @@ void fill_nudges_GPU(EmbeddingMaker_GPU* thing){
     // ----------- 2: gradient descent: fill nudge_attraction, nudge_repulsion_far, nudge_repulsion -----------
     float sum_Qdenom_elements_cpu = 0.0f;
     cuda_launch___fill_nudges_and_leak(thing->stream_nudge_HD, thing->stream_nudge_LD, thing->stream_nudge_FAR, thing->stream_Qdenomsum, thing->stream_leak,\
-        thing->Kern_HD_blockshape, thing->Kern_HD_gridshape, thing->Kern_LD_blockshape, thing->Kern_LD_gridshape, thing->Kern_FAR_blockshape, thing->Kern_FAR_gridshape, thing->Kern_Qdenomsum_blockshape, thing->Kern_Qdenomsum_gridshape,\
+        thing->Kern_HD_blockshape, thing->Kern_HD_gridshape, thing->Kern_LD_blockshape, thing->Kern_LD_gridshape, thing->Kern_FAR_blockshape, thing->Kern_FAR_gridshape, thing->Kern_Qdenomsum_blockshape, thing->Kern_Qdenomsum_gridshape, thing->Kern_leak_blockshape, thing->Kern_leak_gridshape,\
          thing->N, thing->Khd, thing->cu_P,\
          thing->cu_Xld_nesterov, thing->cu_neighsHD, thing->cu_neighsLD, thing->cu_furthest_neighdists_LD, thing->Qdenom_EMA,\
           cauchy_alpha, thing->cu_elements_of_Qdenom, thing->cu_sum_Qdenom_elements, &sum_Qdenom_elements_cpu, thing->N_elements_of_Qdenom,\

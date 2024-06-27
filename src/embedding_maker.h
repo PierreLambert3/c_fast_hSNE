@@ -116,7 +116,7 @@ void momenta_leak_GPU(EmbeddingMaker_GPU* thing);
 void apply_momenta_and_decay_GPU(EmbeddingMaker_GPU* thing);
 
 void cuda_launch___fill_nudges_and_leak(cudaStream_t, cudaStream_t, cudaStream_t, cudaStream_t, cudaStream_t,\
- uint32_t*, uint32_t*,uint32_t*, uint32_t*,uint32_t*, uint32_t*,uint32_t*, uint32_t*,\
+ uint32_t*, uint32_t*,uint32_t*, uint32_t*,uint32_t*, uint32_t*,uint32_t*, uint32_t*,uint32_t*, uint32_t*,\
   uint32_t, uint32_t, float*,\
    float*, uint32_t*, uint32_t*, float*, float,\
     float, double*, float*, float*, uint32_t,\
