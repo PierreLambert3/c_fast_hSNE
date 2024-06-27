@@ -47,35 +47,45 @@ typedef struct {
     uint32_t* Kern_FAR_blockshape; // 3d array
     uint32_t* Kern_Qdenomsum_blockshape; // 3d array
     uint32_t* Kern_Qdenomsum_gridshape;
+    uint32_t* Kern_leak_gridshape;
+    uint32_t* Kern_leak_blockshape;
 
     // streams
-    cudaStream_t stream_K_HD;
-    cudaStream_t stream_K_LD;
-    cudaStream_t stream_rand;
+    // computing nudges (& Qdenomsum)
+    cudaStream_t stream_nudge_HD;
+    cudaStream_t stream_nudge_LD;
+    cudaStream_t stream_nudge_FAR;
     cudaStream_t stream_Qdenomsum;
+    // leak momentum
+    cudaStream_t stream_leak;
+    // parameter update
+    cudaStream_t stream_parameter_updates;
 
-    // things on GPU
-    float*          Xld_base_cuda;     // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data
-    float*          Xld_nesterov_cuda; // will be on GPU as a 1d-array, use Xnesterov[N] to access the 1d data
+    bool leak_phase; // will be toggled at each iteration
 
-    float*          nudge_attraction_cuda;   // will be on GPU as a 1d-array, use momenta_attraction[N] to access the 1d data
-    float*          nudge_repulsion_far_cuda;  // this will leak to neighbours 
-    float*          nudge_repulsion_cuda;
+    // things on GPU  (all as 1d arrays)
+    float*          cu_nudge_attrac_HD;
+    float*          cu_nudge_repuls_HDLD;
+    float*          cu_nudge_FAR;
+    
+    float*          cu_momenta_attrac;
+    float*          cu_momenta_repuls_near;
+    float*          cu_momenta_repuls_far___0;
+    float*          cu_momenta_repuls_far___1;
 
-    kernel cuda : (i, j) avec j dans les Kld et les Kld premiers voisins en HD
-    pour ce smoothing, il faut IMPERATIVEMENT que je smooth vers une autre matrice, sinon ca complique trop les choses avec des sync 
-    --> on vide le gradient far vers le nouveau array, mais avec leak proches, controlé par un parametre (ex: on leak 0.9% et garde 0.1%)
+    float*          cu_Xld_base;    
+    float*          cu_Xld_nesterov;
 
+    uint32_t*       cu_neighsLD;
+    uint32_t*       cu_neighsHD;
+    float*          cu_furthest_neighdists_LD;
+    float*          cu_temporary_furthest_neighdists_LD;
+    uint32_t*       cu_random_numbers_size_NxRand;
+    float*          cu_P; 
 
-    uint32_t*       neighsLD_cuda;
-    uint32_t*       neighsHD_cuda;
-    float*          furthest_neighdists_LD_cuda;
-    float*          temporary_furthest_neighdists_LD_cuda;
-    uint32_t*       random_numbers_size_NxRand_cuda;
     uint32_t        N_elements_of_Qdenom;
-    double*         elements_of_Qdenom_cuda; // will be on GPU as a 1d-array
-    float*         sum_Qdenom_elements_cuda;
-    float*          P_cuda; 
+    double*         cu_elements_of_Qdenom; // will be on GPU as a 1d-array
+    float*          cu_sum_Qdenom_elements;
 } EmbeddingMaker_GPU;
 
 typedef struct {
@@ -105,11 +115,12 @@ void fill_nudges_GPU(EmbeddingMaker_GPU* thing);
 void momenta_leak_GPU(EmbeddingMaker_GPU* thing);
 void apply_momenta_and_decay_GPU(EmbeddingMaker_GPU* thing);
 
-void fill_raw_momenta_launch_cuda(cudaStream_t, cudaStream_t, cudaStream_t, cudaStream_t,\
+void cuda_launch___fill_nudges_and_leak(cudaStream_t, cudaStream_t, cudaStream_t, cudaStream_t, cudaStream_t,\
  uint32_t*, uint32_t*,uint32_t*, uint32_t*,uint32_t*, uint32_t*,uint32_t*, uint32_t*,\
   uint32_t, uint32_t, float*,\
    float*, uint32_t*, uint32_t*, float*, float,\
     float, double*, float*, float*, uint32_t,\
      float*, float*, float*, float*,\
-      uint32_t*);
+      uint32_t*,\
+      float*, float*);
 #endif // EMBEDDING_MAKER_H

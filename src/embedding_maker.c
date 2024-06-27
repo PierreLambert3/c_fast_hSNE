@@ -57,52 +57,67 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     thing->GPU_CPU_comms_P        = GPU_CPU_comms_P;
 
     // streams    
-    if(cudaStreamCreate(&thing->stream_K_HD) != cudaSuccess){
+    if(cudaStreamCreate(&thing->stream_nudge_HD) != cudaSuccess){
         dying_breath("cudaStreamCreate error");}
-    if(cudaStreamCreate(&thing->stream_K_LD) != cudaSuccess){
+    if(cudaStreamCreate(&thing->stream_nudge_LD) != cudaSuccess){
         dying_breath("cudaStreamCreate error");}
-    if(cudaStreamCreate(&thing->stream_rand) != cudaSuccess){
+    if(cudaStreamCreate(&thing->stream_nudge_FAR) != cudaSuccess){
         dying_breath("cudaStreamCreate error");}
     if(cudaStreamCreate(&thing->stream_Qdenomsum) != cudaSuccess){
         dying_breath("cudaStreamCreate error");}
+    if(cudaStreamCreate(&thing->stream_leak) != cudaSuccess){
+        dying_breath("cudaStreamCreate error");}
+    if(cudaStreamCreate(&thing->stream_parameter_updates) != cudaSuccess){
+        dying_breath("cudaStreamCreate error");}
+    
+    thing->leak_phase = 0;
     
     // things on GPU
-    malloc_1d_float_cuda(&thing->Xld_base_cuda, N*Mld);
-    malloc_1d_float_cuda(&thing->Xld_nesterov_cuda, N*Mld);
-    malloc_1d_float_cuda(&thing->nudge_attraction_cuda, N*Mld);
-    malloc_1d_float_cuda(&thing->nudge_repulsion_far_cuda, N*Mld);
-    malloc_1d_float_cuda(&thing->nudge_repulsion_cuda, N*Mld);
-    malloc_1d_uint32_cuda(&thing->neighsLD_cuda, N*Kld);
-    malloc_1d_uint32_cuda(&thing->neighsHD_cuda, N*Khd);
-    malloc_1d_float_cuda(&thing->furthest_neighdists_LD_cuda, N);
-    malloc_1d_float_cuda(&thing->temporary_furthest_neighdists_LD_cuda, N);
-    malloc_1d_uint32_cuda(&thing->random_numbers_size_NxRand_cuda, N*NB_RANDOM_POINTS_FAR_REPULSION);
-    malloc_1d_float_cuda(&thing->P_cuda, N*Khd);
+    // nudges
+    malloc_1d_float_cuda(&thing->cu_nudge_attrac_HD, N*Mld);
+    malloc_1d_float_cuda(&thing->cu_nudge_repuls_HDLD, N*Mld);
+    malloc_1d_float_cuda(&thing->cu_nudge_FAR, N*Mld);
+    // momenta
+    malloc_1d_float_cuda(&thing->cu_momenta_attrac, N*Mld);
+    malloc_1d_float_cuda(&thing->cu_momenta_repuls_near, N*Mld);
+    malloc_1d_float_cuda(&thing->cu_momenta_repuls_far___0, N*Mld);
+    malloc_1d_float_cuda(&thing->cu_momenta_repuls_far___1, N*Mld);
+    // init to 0.0f all nudges and momenta
+    bool success       = (cudaMemset(thing->cu_nudge_attrac_HD, 0, N*Mld*sizeof(float)) == cudaSuccess);
+    success = success && (cudaMemset(thing->cu_nudge_repuls_HDLD, 0, N*Mld*sizeof(float)) == cudaSuccess);
+    success = success && (cudaMemset(thing->cu_nudge_FAR, 0, N*Mld*sizeof(float)) == cudaSuccess);
+    success = success && (cudaMemset(thing->cu_momenta_attrac, 0, N*Mld*sizeof(float)) == cudaSuccess);
+    success = success && (cudaMemset(thing->cu_momenta_repuls_near, 0, N*Mld*sizeof(float)) == cudaSuccess);
+    success = success && (cudaMemset(thing->cu_momenta_repuls_far___0, 0, N*Mld*sizeof(float)) == cudaSuccess);
+    success = success && (cudaMemset(thing->cu_momenta_repuls_far___1, 0, N*Mld*sizeof(float)) == cudaSuccess);
+    if(!success){
+        dying_breath("cudamemset error");}
 
+    malloc_1d_float_cuda(&thing->cu_Xld_base, N*Mld);
+    malloc_1d_float_cuda(&thing->cu_Xld_nesterov, N*Mld);
 
+    malloc_1d_uint32_cuda(&thing->cu_neighsLD, N*Kld);
+    malloc_1d_uint32_cuda(&thing->cu_neighsHD, N*Khd);
+    malloc_1d_float_cuda(&thing->cu_furthest_neighdists_LD, N);
+    malloc_1d_float_cuda(&thing->cu_temporary_furthest_neighdists_LD, N);
+    malloc_1d_uint32_cuda(&thing->cu_random_numbers_size_NxRand, N*NB_RANDOM_POINTS_FAR_REPULSION);
+    malloc_1d_float_cuda(&thing->cu_P, N*Khd); 
 
     // copy values from the arrays on the CPU
-    memcpy_CPU_to_CUDA_float(thing->Xld_base_cuda, as_float_1d(Xld, N, Mld), N*Mld);
-    memcpy_CPU_to_CUDA_float(thing->Xld_nesterov_cuda, as_float_1d(Xld, N, Mld), N*Mld);
-    memcpy_CPU_to_CUDA_uint32(thing->neighsLD_cuda, as_uint32_1d(neighsLD, N, Kld), N*Kld);
-    memcpy_CPU_to_CUDA_uint32(thing->neighsHD_cuda, as_uint32_1d(neighsHD, N, Khd), N*Khd);
-    memcpy_CPU_to_CUDA_float(thing->furthest_neighdists_LD_cuda, furthest_neighdists_LD, N);
-    memcpy_CPU_to_CUDA_float(thing->P_cuda, as_float_1d(P, N, Khd), N*Khd);
+    memcpy_CPU_to_CUDA_float(thing->cu_Xld_base, as_float_1d(Xld, N, Mld), N*Mld);
+    memcpy_CPU_to_CUDA_float(thing->cu_Xld_nesterov, as_float_1d(Xld, N, Mld), N*Mld);
+
+    memcpy_CPU_to_CUDA_uint32(thing->cu_neighsLD, as_uint32_1d(neighsLD, N, Kld), N*Kld);
+    memcpy_CPU_to_CUDA_uint32(thing->cu_neighsHD, as_uint32_1d(neighsHD, N, Khd), N*Khd);
+    memcpy_CPU_to_CUDA_float(thing->cu_furthest_neighdists_LD, furthest_neighdists_LD, N);
+    memcpy_CPU_to_CUDA_float(thing->cu_P, as_float_1d(P, N, Khd), N*Khd);
     
-    // init to 0.0f all momenta
-    cudaError_t err1 = cudaMemset(thing->nudge_attraction_cuda, 0, N*Mld*sizeof(float));
-    cudaError_t err2 = cudaMemset(thing->nudge_repulsion_far_cuda, 0, N*Mld*sizeof(float));
-    cudaError_t err3 = cudaMemset(thing->nudge_repulsion_cuda, 0, N*Mld*sizeof(float));
-    if(err1 != cudaSuccess || err2 != cudaSuccess || err3 != cudaSuccess){
-        dying_breath("cudamemset error");
-    }
     // fill thing->random_numbers_size_NxRand_cuda with random numbers inside [0, N[
     uint32_t* random_numbers_size_NxRand = malloc_uint32_t(N*NB_RANDOM_POINTS_FAR_REPULSION, 0u);
     for(uint32_t i = 0; i < N*NB_RANDOM_POINTS_FAR_REPULSION; i++){
-        random_numbers_size_NxRand[i] = (uint32_t)rand(); // not using the shitty homemade random: else rand of i at t is the same as rand of (i+1) at (t+1)
-    }
-    memcpy_CPU_to_CUDA_uint32(thing->random_numbers_size_NxRand_cuda, random_numbers_size_NxRand, N*NB_RANDOM_POINTS_FAR_REPULSION);
-
+        random_numbers_size_NxRand[i] = (uint32_t)rand();} // not using my shitty homemade random: else rand of i at t is the same as rand of (i+1) at (t+1)
+    memcpy_CPU_to_CUDA_uint32(thing->cu_random_numbers_size_NxRand, random_numbers_size_NxRand, N*NB_RANDOM_POINTS_FAR_REPULSION);
+    free_array(random_numbers_size_NxRand);
 
 /***
  *     _   __                     _       _                           
@@ -148,10 +163,10 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     }
     uint32_t smem_N_floats = kern1_Ni * Mld + (kern1_Ni * Khd) * (2u * Mld);
     uint32_t reg_N_floats  = (kern1_Ni * Khd) * (kern1_estimated_regs + Mld);
-    bool reg_ok  = reg_N_floats < 0.75 * reg_max_N_floats;
-    bool smem_ok = smem_N_floats < target_n_floats_smem;
-    bool blocksize_ok = (kern1_Ni) < (uint32_t) prop.maxThreadsDim[1];
-    if(!reg_ok || !smem_ok || !blocksize_ok){
+    bool smem_ok = smem_N_floats <= target_n_floats_smem;
+    bool blocksize_ok = (kern1_Ni) <= (uint32_t) prop.maxThreadsDim[1];
+    bool nthreads_ok = (kern1_Ni) * Khd <= (uint32_t) prop.maxThreadsPerBlock;
+    if(!smem_ok || !blocksize_ok || !nthreads_ok){
         dying_breath("could not find a suitable block size for the kernel 1");}
 
     printf("\nblock shapes for kernel 1: (%u, %u)\n", Khd, kern1_Ni);
@@ -184,13 +199,13 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     }
     uint32_t smem_N_floats_Kern2 = Kern2_Ni * Mld + (Kern2_Ni * Kld) * (2u * Mld);
     uint32_t reg_N_floats_Kern2  = (Kern2_Ni * Kld) * (kern2_estimated_regs + Mld);
-    bool reg_ok_Kern2  = reg_N_floats_Kern2 < 0.75 * reg_max_N_floats;
-    bool smem_ok_Kern2 = smem_N_floats_Kern2 < target_n_floats_smem;
-    bool blocksize_ok_Kern2 = (Kern2_Ni) < (uint32_t) prop.maxThreadsDim[1];
-    if(!reg_ok_Kern2 || !smem_ok_Kern2 || !blocksize_ok_Kern2){
+    bool smem_ok_Kern2      = smem_N_floats_Kern2 <= target_n_floats_smem;
+    bool blocksize_ok_Kern2 = (Kern2_Ni) <= (uint32_t) prop.maxThreadsDim[1];
+    nthreads_ok = (Kern2_Ni) * Kld <= (uint32_t) prop.maxThreadsPerBlock;
+    if(!smem_ok_Kern2 || !blocksize_ok_Kern2 || !nthreads_ok){
         dying_breath("could not find a suitable block size for the kernel 2");}
     printf("block shapes for kernel 2: (%u, %u)\n", Kld, Kern2_Ni);
-    printf("memory usage and maxima for kernel 2: smem_N_floats, %u target_n_floats_smem, %u  reg_N_floats, %u reg_max_N_floats %u  \n", smem_N_floats_Kern2, target_n_floats_smem, reg_N_floats_Kern2, reg_max_N_floats);
+    printf("memory usage and maxima for kernel 2: smem_N_floats, %u target_n_floats_smem, %u  \n", smem_N_floats_Kern2, target_n_floats_smem);
     printf("number of threads per block: %u\n", Kld* Kern2_Ni);
     thing->Kern_LD_blockshape[0] = Kld;
     thing->Kern_LD_blockshape[1] = Kern2_Ni; // Ni!
@@ -219,14 +234,13 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
         Kern3_Ni++;
     }
     uint32_t smem_N_floats_Kern3 = Kern3_Ni * Mld + (Kern3_Ni * NB_RANDOM_POINTS_FAR_REPULSION) * (2u * Mld);
-    uint32_t reg_N_floats_Kern3  = (Kern3_Ni * NB_RANDOM_POINTS_FAR_REPULSION) * (kern3_estimated_regs + Mld);
-    bool reg_ok_Kern3  = reg_N_floats_Kern3 < 0.75 * reg_max_N_floats;
-    bool smem_ok_Kern3 = smem_N_floats_Kern3 < target_n_floats_smem;
-    bool blocksize_ok_Kern3 = (Kern3_Ni) < (uint32_t) prop.maxThreadsDim[1];
-    if(!reg_ok_Kern3 || !smem_ok_Kern3 || !blocksize_ok_Kern3){
+    bool smem_ok_Kern3 = smem_N_floats_Kern3 <= target_n_floats_smem;
+    bool blocksize_ok_Kern3 = (Kern3_Ni) <= (uint32_t) prop.maxThreadsDim[1];
+    nthreads_ok = (Kern3_Ni) * NB_RANDOM_POINTS_FAR_REPULSION <= (uint32_t) prop.maxThreadsPerBlock;
+    if(!smem_ok_Kern3 || !blocksize_ok_Kern3 || !nthreads_ok){
         dying_breath("could not find a suitable block size for the kernel 3");}
     printf("block shapes for kernel 3: (%u, %u)\n", NB_RANDOM_POINTS_FAR_REPULSION, Kern3_Ni);
-    printf("memory usage and maxima for kernel 3: smem_N_floats, %u target_n_floats_smem, %u  reg_N_floats, %u reg_max_N_floats %u  \n", smem_N_floats_Kern3, target_n_floats_smem, reg_N_floats_Kern3, reg_max_N_floats);
+    printf("memory usage and maxima for kernel 3: smem_N_floats, %u target_n_floats_smem, %u    \n", smem_N_floats_Kern3, target_n_floats_smem);
     printf("number of threads per block: %u\n", NB_RANDOM_POINTS_FAR_REPULSION * Kern3_Ni);
     thing->Kern_FAR_blockshape[0] = NB_RANDOM_POINTS_FAR_REPULSION;
     thing->Kern_FAR_blockshape[1] = Kern3_Ni; // Ni!
@@ -236,9 +250,9 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
 
     // ~~~~~~~~~  Kernel 4: computes the sum of the Qdenom elements  ~~~~~~~~~
     // some Qdenom estimation things
-    thing->N_elements_of_Qdenom = thing->Kern_HD_gridshape[0] + thing->Kern_LD_gridshape[0] + thing->Kern_FAR_gridshape[0]; // each block fir each of the 3 kernels will compute one element of Qdenom
-    malloc_1d_double_cuda(&thing->elements_of_Qdenom_cuda, thing->N_elements_of_Qdenom);
-    malloc_1d_float_cuda(&thing->sum_Qdenom_elements_cuda, 1u);
+    thing->N_elements_of_Qdenom = thing->Kern_HD_gridshape[0] + thing->Kern_LD_gridshape[0] + thing->Kern_FAR_gridshape[0]; // each block for each of the 3 kernels will compute one element of Qdenom
+    malloc_1d_double_cuda(&thing->cu_elements_of_Qdenom, thing->N_elements_of_Qdenom);
+    malloc_1d_float_cuda(&thing->cu_sum_Qdenom_elements, 1u);
     thing->Kern_Qdenomsum_blockshape = malloc_uint32_t(3, 1u);
     thing->Kern_Qdenomsum_gridshape  = malloc_uint32_t(3, 1u);
     uint32_t Kern4_n_blocks = 1u;
@@ -257,6 +271,38 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     thing->Kern_Qdenomsum_blockshape[2] = 1u;
     thing->Kern_Qdenomsum_gridshape[0]  = (thing->N_elements_of_Qdenom + Kern4_n_blocks - 1u) / Kern4_n_blocks;
     printf("block shapes for kernel 4: (%u, %u)  (grid: %u)  (n elements %d)\n", thing->Kern_Qdenomsum_blockshape[0], 1u, thing->Kern_Qdenomsum_gridshape[0], thing->N_elements_of_Qdenom);
+
+
+    // ~~~~~~~~~  Kernel 5: leaking momenta  ~~~~~~~~~
+    // grid 1d ; block 2d : (Kld, Ni)
+    // smem_N_floats        : Ni * Mld  * 2u
+    // registers_N_floats   : Ni * Mld
+    thing->Kern_leak_gridshape  = malloc_uint32_t(3, 1u);
+    thing->Kern_leak_blockshape = malloc_uint32_t(3, 1u);
+    uint32_t Kern5_Ni = 1u;
+    while(true){
+        uint32_t next_smem_N_floats = (Kern5_Ni + 1u) * Mld * 2u;
+        uint32_t next_reg_N_floats  = (Kern5_Ni + 1u) * Mld;
+        bool next_smem_ok = next_smem_N_floats <= target_n_floats_smem;
+        bool next_reg_ok  = next_reg_N_floats  <= target_n_floats_regs;
+        bool next_blocksize_ok = (Kern5_Ni + 1u) < (uint32_t) prop.maxThreadsDim[1];
+        bool next_nthreads_ok  = (Kern5_Ni + 1u) * Kld <= (uint32_t) prop.maxThreadsPerBlock;
+        if(!next_smem_ok || !next_reg_ok || !next_blocksize_ok || !next_nthreads_ok){
+            printf(" %u %u %u %u\n", next_smem_ok, next_reg_ok, next_blocksize_ok, next_nthreads_ok);
+            break;}
+        
+        Kern5_Ni++;
+    }
+    uint32_t smem_N_floats_Kern5 = Kern5_Ni * Mld * 2u;
+    bool smem_ok_Kern5 = smem_N_floats_Kern5 <= target_n_floats_smem;
+    bool blocksize_ok_Kern5 = (Kern5_Ni) <= (uint32_t) prop.maxThreadsDim[1];
+    nthreads_ok = (Kern5_Ni) * Kld <= (uint32_t) prop.maxThreadsPerBlock;
+    if(!smem_ok_Kern5 || !blocksize_ok_Kern5 || !nthreads_ok){
+        dying_breath("could not find a suitable block size for the kernel 5");}
+    printf("\nblock shapes for kernel 5: (%u, %u)\n", Kld, Kern5_Ni);
+    printf("memory usage and maxima for kernel 5: smem_N_floats, %u target_n_floats_smem, %u  \n", smem_N_floats_Kern5, target_n_floats_smem);
+    printf("number of threads per block: %u\n", Kld* Kern5_Ni);
+    die();
 }
 
 // 1: gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion
@@ -267,22 +313,33 @@ void fill_nudges_GPU(EmbeddingMaker_GPU* thing){
     float cauchy_alpha = thing->hparam_LDkernel_alpha[0];
     pthread_mutex_unlock(thing->mutex_hparam_LDkernel_alpha);
 
-    // ----------- 1: gradient descent: fill nudge_attraction, nudge_repulsion_far, nudge_repulsion -----------
+    // ----------- 1: determine which momtenum will be leaked, which will be source -----------
+    float* mmtm_src;
+    float* mmtm_rcv;
+    if(thing->leak_phase){
+        mmtm_src = thing->cu_momenta_repuls_far___0;
+        mmtm_rcv = thing->cu_momenta_repuls_far___1;
+    } else {
+        mmtm_src = thing->cu_momenta_repuls_far___1;
+        mmtm_rcv = thing->cu_momenta_repuls_far___0;
+    }
+
+    // ----------- 2: gradient descent: fill nudge_attraction, nudge_repulsion_far, nudge_repulsion -----------
     float sum_Qdenom_elements_cpu = 0.0f;
-    fill_raw_momenta_launch_cuda(thing->stream_K_HD, thing->stream_K_LD, thing->stream_rand, thing->stream_Qdenomsum,\
+    cuda_launch___fill_nudges_and_leak(thing->stream_nudge_HD, thing->stream_nudge_LD, thing->stream_nudge_FAR, thing->stream_Qdenomsum, thing->stream_leak,\
         thing->Kern_HD_blockshape, thing->Kern_HD_gridshape, thing->Kern_LD_blockshape, thing->Kern_LD_gridshape, thing->Kern_FAR_blockshape, thing->Kern_FAR_gridshape, thing->Kern_Qdenomsum_blockshape, thing->Kern_Qdenomsum_gridshape,\
-         thing->N, thing->Khd, thing->P_cuda,\
-         thing->Xld_nesterov_cuda, thing->neighsHD_cuda, thing->neighsLD_cuda, thing->furthest_neighdists_LD_cuda, thing->Qdenom_EMA,\
-          cauchy_alpha, thing->elements_of_Qdenom_cuda, thing->sum_Qdenom_elements_cuda, &sum_Qdenom_elements_cpu, thing->N_elements_of_Qdenom,\
-           thing->nudge_attraction_cuda, thing->nudge_repulsion_cuda, thing->nudge_repulsion_far_cuda, thing->temporary_furthest_neighdists_LD_cuda,\
-            thing->random_numbers_size_NxRand_cuda);
+         thing->N, thing->Khd, thing->cu_P,\
+         thing->cu_Xld_nesterov, thing->cu_neighsHD, thing->cu_neighsLD, thing->cu_furthest_neighdists_LD, thing->Qdenom_EMA,\
+          cauchy_alpha, thing->cu_elements_of_Qdenom, thing->cu_sum_Qdenom_elements, &sum_Qdenom_elements_cpu, thing->N_elements_of_Qdenom,\
+           thing->cu_nudge_attrac_HD, thing->cu_nudge_repuls_HDLD, thing->cu_nudge_FAR, thing->cu_temporary_furthest_neighdists_LD,\
+            thing->cu_random_numbers_size_NxRand,\
+            mmtm_src, mmtm_rcv);
     
-    
-    // ----------- 2: update EMA of Qdenom -----------
+    // ----------- 3: update EMA of Qdenom -----------
     // the estimation of Qdenom for this iteration
     uint32_t n_samples_estim = thing->N * (thing->Khd + Kld + NB_RANDOM_POINTS_FAR_REPULSION);
     uint32_t matrix_area = thing->N * (thing->N-1u);
-    float   scaling_factor = (float) ((double) (matrix_area) / (double) n_samples_estim);
+    float scaling_factor = (float) ((double) matrix_area / (double) n_samples_estim);
     float new_Qdenom = sum_Qdenom_elements_cpu * scaling_factor;
     // update the EMA of Qdenom
     // thing->Qdenom_EMA = 0.9f * thing->Qdenom_EMA + 0.1f * new_Qdenom;
@@ -341,9 +398,9 @@ void new_EmbeddingMaker(EmbeddingMaker* thing, uint32_t N, uint32_t* thread_rand
 // this function sends the Xld and furthest_neighdists_LD towards the CPU, in an UNSAFE manner
 static void send_Xld_and_furthest_neighdists_LD_to_CPU(EmbeddingMaker_GPU* thing){
     // Xld: GPU to CPU
-    memcpy_CUDA_to_CPU_float(as_float_1d(thing->Xld_cpu, thing->N, Mld), thing->Xld_base_cuda, thing->N*Mld);
+    memcpy_CUDA_to_CPU_float(as_float_1d(thing->Xld_cpu, thing->N, Mld), thing->cu_Xld_base, thing->N*Mld);
     // furthest_neighdists_LD: GPU to CPU
-    memcpy_CUDA_to_CPU_float(thing->furthest_neighdists_LD_cpu, thing->furthest_neighdists_LD_cuda, thing->N);
+    memcpy_CUDA_to_CPU_float(thing->furthest_neighdists_LD_cpu, thing->cu_furthest_neighdists_LD, thing->N);
 }
 
 
@@ -355,7 +412,7 @@ static void receive_neighs_and_P_from_CPU(EmbeddingMaker_GPU* thing){
 
     if(is_ready_now(sync_neigh_LD)){
         pthread_mutex_lock(sync_neigh_LD->mutex_buffer);
-        memcpy_CPU_to_CUDA_uint32(thing->neighsLD_cuda, thing->GPU_CPU_comms_neighsLD->buffer, thing->N*Kld);
+        memcpy_CPU_to_CUDA_uint32(thing->cu_neighsLD, thing->GPU_CPU_comms_neighsLD->buffer, thing->N*Kld);
         // cudaMemcpy(thing->neighsLD_cuda, thing->GPU_CPU_comms_neighsLD->buffer, thing->N*thing->Kld*sizeof(uint32_t), cudaMemcpyHostToDevice);
         pthread_mutex_unlock(sync_neigh_LD->mutex_buffer);
         set_ready(sync_neigh_LD, false);
@@ -368,7 +425,7 @@ static void receive_neighs_and_P_from_CPU(EmbeddingMaker_GPU* thing){
     GPU_CPU_sync* sync_neigh_HD = &thing->GPU_CPU_comms_neighsHD->sync;
     if(is_ready_now(sync_neigh_HD)){
         pthread_mutex_lock(sync_neigh_HD->mutex_buffer);
-        memcpy_CPU_to_CUDA_uint32(thing->neighsHD_cuda, thing->GPU_CPU_comms_neighsHD->buffer, thing->N*thing->Khd);
+        memcpy_CPU_to_CUDA_uint32(thing->cu_neighsHD, thing->GPU_CPU_comms_neighsHD->buffer, thing->N*thing->Khd);
         // cudaMemcpy(thing->neighsHD_cuda, thing->GPU_CPU_comms_neighsHD->buffer, thing->N*thing->Khd*sizeof(uint32_t), cudaMemcpyHostToDevice);
         pthread_mutex_unlock(sync_neigh_HD->mutex_buffer);
         set_ready(sync_neigh_HD, false);
@@ -380,7 +437,7 @@ static void receive_neighs_and_P_from_CPU(EmbeddingMaker_GPU* thing){
     GPU_CPU_sync* sync_P = &thing->GPU_CPU_comms_P->sync;
     if(is_ready_now(sync_P)){
         pthread_mutex_lock(sync_P->mutex_buffer);
-        memcpy_CPU_to_CUDA_float(thing->P_cuda, thing->GPU_CPU_comms_P->buffer, thing->N*thing->Khd);
+        memcpy_CPU_to_CUDA_float(thing->cu_P, thing->GPU_CPU_comms_P->buffer, thing->N*thing->Khd);
         // cudaMemcpy(thing->P_cuda, thing->GPU_CPU_comms_P->buffer, thing->N*thing->Khd*sizeof(float), cudaMemcpyHostToDevice);
         pthread_mutex_unlock(sync_P->mutex_buffer);
         set_ready(sync_P, false);
@@ -410,7 +467,7 @@ void* routine_EmbeddingMaker_GPU(void* arg){
     thing->is_running = true;
     double start_time = time_seconds();
     while(thing->is_running){
-        // ~~~~~~~~~~ gradient descent ~~~~~~~~~~
+        // ~~~~~~~~~~ move points around in the embedding ~~~~~~~~~~
         // gradient descent: nudge things around a little bit, on the GPU 
         fill_nudges_GPU(thing);
 
@@ -429,7 +486,10 @@ void* routine_EmbeddingMaker_GPU(void* arg){
             receive_neighs_and_P_from_CPU(thing);
             start_time = time_seconds();
         }
-        // printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
+
+        // ~~~~~~~~~~ phase toggle for momentum leaks ~~~~~~~~~~
+        thing->leak_phase = (bool) (1 - thing->leak_phase);
+        printf("leak phase: %d\n", thing->leak_phase);
     }
     return NULL; 
 }
@@ -437,7 +497,7 @@ void* routine_EmbeddingMaker_GPU(void* arg){
 
 
 /*
-sous-poudrer le tout avec des gradients de MDS
+sous-poudrer le tout avec des gradients de MDS, qu'on peut leak aussi
 */
 
 // thing->estimated_Qdenom = (float) (dbl_acc_denom * ( ((double) (thing->N*thing->N - thing->N)) / (double) n_votes));
@@ -457,7 +517,6 @@ void destroy_EmbeddingMaker(EmbeddingMaker* thing){
 
 void* routine_EmbeddingMaker_CPU(void* arg){
     dying_breath("CPU-based embedding maker not implemented yet");
-    // printf("it is important to update the furhtest dist to LD neighs in the tSNE optimisation, when computing them\n");
     return NULL; 
 }
 
