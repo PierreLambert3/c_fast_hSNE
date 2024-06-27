@@ -258,9 +258,53 @@ __global__ void interactions_far(uint32_t N, float* cu_Xld_nesterov, float Qdeno
 }
 
 
+/* visual representation of shared memory:
+        |[----- Mld -----]|    each row contains the Xi momentum source
+        |        .        |                            
+        |        .        |
+        |[----- Mld -----]|
+        --------------------------------------
+        | M | M | M | M | ... | M | M | M | M |    
+        | l | l | l | l | ... | l | l | l | l |     width: Ni x Kld
+        | d | d | d | d | ... | d | d | d | d |        
+        --------------------------------------
 
-__global__ void leak_kernel(float* momentum_src, float* momentum_rcv){
+        block shape: (Kld, Ni)
+*/
+__global__ void leak_kernel(uint32_t N, uint32_t* cu_neighsLD, float* momenta_src, float* momenta_rcv){
     // LEAK_ALPHA : 1 is big leak, 0 is small leak
+    uint32_t this_Ni = blockDim.y; // block shape: (Kld, Ni)
+    if(blockIdx.x == gridDim.x - 1u){
+        this_Ni = N - (blockIdx.x * blockDim.y);}
+    uint32_t this_block_surface = Kld * this_Ni;
+    uint32_t i0            = blockDim.y * blockIdx.x; // the value of the smallest i in the block
+    uint32_t k             = threadIdx.x;       // block shape: (Kld, Ni)
+    uint32_t i             = i0 + threadIdx.y;  // block shape: (Kld, Ni)
+    if( i >= N ){return;} // out of bounds (no guarantee that N is a multiple of Kld)
+    __syncthreads();
+    uint32_t j             = cu_neighsLD[i * Kld + k]; 
+    uint32_t tid           = threadIdx.x + threadIdx.y * Kld; // index within the block
+
+    // ~~~~~~~~~~~~~~~~~~~ Initialise registers: source from j ~~~~~~~~~~~~~~~~~~~
+    float src_j[Mld];
+    #pragma unroll
+    for (uint32_t m = 0u; m < Mld; m++) { // fetch source from DRAM
+        src_j[m] = momenta_src[j*Mld + m];}
+
+    // ~~~~~~~~~~~~~~~~~~~ Initialise shared memory ~~~~~~~~~~~~~~~~~~~
+    extern __shared__ float smem5[];
+    float* src_i  = &smem5[(i - i0) * Mld];
+    float* rcv_ik = &smem5[this_Ni*Mld + tid];  // stride for changing m: block_surface
+    if(k == 0){ // fetch source momentum from DRAM
+        #pragma unroll
+        for (uint32_t m = 0u; m < Mld; m++) {
+            src_i[m] = momenta_src[i*Mld + m];}
+    }
+    __syncthreads();
+
+
+    continuer ici
+
     return;
 }
 
@@ -588,7 +632,7 @@ void cuda_launch___fill_nudges_and_leak(cudaStream_t stream_nudge_HD, cudaStream
 
     // kernel 5 : leak the momenta
     cudaStreamSynchronize(stream_leak);
-    leak_kernel<<<Kern_leak_grid, Kern_leak_block, leak_sharedMemorySize, stream_leak>>>(momentum_src_leak, momentum_rcv_leak);
+    leak_kernel<<<Kern_leak_grid, Kern_leak_block, leak_sharedMemorySize, stream_leak>>>(N, cu_neighsLD, momentum_src_leak, momentum_rcv_leak);
     cudaError_t err5 = cudaGetLastError();
     if (err5 != cudaSuccess) {printf("Error in kernel 5: %s\n", cudaGetErrorString(err5));}
 
