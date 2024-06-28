@@ -49,6 +49,8 @@ typedef struct {
     uint32_t* Kern_Qdenomsum_gridshape;
     uint32_t* Kern_leak_gridshape;
     uint32_t* Kern_leak_blockshape;
+    uint32_t* Kern_parameter_updates_gridshape;
+    uint32_t* Kern_parameter_updates_blockshape;
 
     // streams
     // computing nudges (& Qdenomsum)
@@ -112,15 +114,23 @@ void* routine_EmbeddingMaker_GPU(void* arg);
 void  start_thread_EmbeddingMaker(EmbeddingMaker* thing);
 
 void fill_nudges_GPU(EmbeddingMaker_GPU* thing);
-void momenta_leak_GPU(EmbeddingMaker_GPU* thing);
 void apply_momenta_and_decay_GPU(EmbeddingMaker_GPU* thing);
 
 void cuda_launch___fill_nudges_and_leak(cudaStream_t, cudaStream_t, cudaStream_t, cudaStream_t, cudaStream_t,\
- uint32_t*, uint32_t*,uint32_t*, uint32_t*,uint32_t*, uint32_t*,uint32_t*, uint32_t*,uint32_t*, uint32_t*,\
-  uint32_t, uint32_t, float*,\
-   float*, uint32_t*, uint32_t*, float*, float,\
-    float, double*, float*, float*, uint32_t,\
-     float*, float*, float*, float*,\
-      uint32_t*,\
-      float*, float*);
+        uint32_t*, uint32_t*,uint32_t*, uint32_t*,uint32_t*, uint32_t*,uint32_t*, uint32_t*,uint32_t*, uint32_t*,\
+        uint32_t, uint32_t, float*,\
+        float*, uint32_t*, uint32_t*, float*, float,\
+        float, double*, float*, float*, uint32_t,\
+        float*, float*, float*, float*,\
+        uint32_t*,\
+        float*, float*);
+
+
+void cuda_launch___apply_momenta_and_decay(cudaStream_t, uint32_t*, uint32_t*,\
+        uint32_t, float*, float*,\
+        float*, float*, float*,\
+        float*, float*, float*,\
+        float);
+
+
 #endif // EMBEDDING_MAKER_H

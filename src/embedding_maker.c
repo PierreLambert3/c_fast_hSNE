@@ -272,6 +272,34 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     thing->Kern_Qdenomsum_gridshape[0]  = (thing->N_elements_of_Qdenom + Kern4_n_blocks - 1u) / Kern4_n_blocks;
     printf("block shapes for kernel 4: (%u, %u)  (grid: %u)  (n elements %d)\n", thing->Kern_Qdenomsum_blockshape[0], 1u, thing->Kern_Qdenomsum_gridshape[0], thing->N_elements_of_Qdenom);
 
+    // ~~~~~~~~~  Kernel 6: parameter updates  ~~~~~~~~~
+    // grid 1d    ;     block 2d : (Mld, Ni)
+    // smem_N_floats : 0
+    // registers_N_floats : 2u * Mld
+    thing->Kern_parameter_updates_blockshape = malloc_uint32_t(3, 1u);
+    thing->Kern_parameter_updates_gridshape  = malloc_uint32_t(3, 1u);
+    uint32_t Kern6_Ni = 1u;
+    while(true){
+        uint32_t next_reg_N_floats = 2u * Mld * (Kern6_Ni + 1u);
+        bool next_reg_ok       = next_reg_N_floats <= target_n_floats_regs;
+        bool next_blocksize_ok = (Kern6_Ni + 1u) < (uint32_t) prop.maxThreadsDim[1];
+        bool next_nthreads_ok  = (Kern6_Ni + 1u) * Mld <= (uint32_t) prop.maxThreadsPerBlock;
+        if(!next_reg_ok || !next_blocksize_ok || !next_nthreads_ok){
+            break;}
+        Kern6_Ni++;
+    }
+    bool reg_ok_Kern6 = 2u * Mld * Kern6_Ni <= target_n_floats_regs;
+    bool blocksize_ok_Kern6 = (Kern6_Ni) <= (uint32_t) prop.maxThreadsDim[1];
+    nthreads_ok = (Kern6_Ni) * Mld <= (uint32_t) prop.maxThreadsPerBlock;
+    if(!reg_ok_Kern6 || !blocksize_ok_Kern6 || !nthreads_ok){
+        dying_breath("could not find a suitable block size for the kernel 6");}
+    printf("\nblock shapes for kernel 6: (%u, %u)\n", Mld, Kern6_Ni);
+    printf("memory usage and maxima for kernel 6: reg_N_floats, %u target_n_floats_regs, %u  \n", 2u * Mld * Kern6_Ni, target_n_floats_regs);
+    printf("number of threads per block: %u\n", Mld* Kern6_Ni);
+    thing->Kern_parameter_updates_blockshape[0] = Mld;
+    thing->Kern_parameter_updates_blockshape[1] = Kern6_Ni; // Ni!
+    thing->Kern_parameter_updates_blockshape[2] = 1u;
+    thing->Kern_parameter_updates_gridshape[0]  = (N*Mld + (Mld * Kern6_Ni) - 1u) / (Mld * Kern6_Ni);
 
     // ~~~~~~~~~  Kernel 5: leaking momenta  ~~~~~~~~~
     // grid 1d ; block 2d : (Kld, Ni)
@@ -303,14 +331,13 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     thing->Kern_leak_blockshape[1] = Kern5_Ni; // Ni!
     thing->Kern_leak_blockshape[2] = 1u;
     thing->Kern_leak_gridshape[0]  = (N*Kld + (Kld * Kern5_Ni) - 1u) / (Kld * Kern5_Ni);
-
-
     printf("\nblock shapes for kernel 5: (%u, %u)\n", Kld, Kern5_Ni);
     printf("memory usage and maxima for kernel 5: smem_N_floats, %u target_n_floats_smem, %u  \n", smem_N_floats_Kern5, target_n_floats_smem);
     printf("number of threads per block: %u\n", Kld* Kern5_Ni);
     printf("grid shape for kernel 5: %u\n\n", thing->Kern_leak_gridshape[0]);
-    printf("\n");
-    printf("\n");
+    
+    
+
 }
 
 // 1: gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion
@@ -357,19 +384,27 @@ void fill_nudges_GPU(EmbeddingMaker_GPU* thing){
     thing->Qdenom_EMA = new_Qdenom;
 }
 
-// momentum leak: momenta_repulsion_far gets smoothed across neighbours (with conservation of vector norm)
-// momenta_repulsion_far_cuda gets leaked entirely to momenta_repulsion_cuda
-void momenta_leak_GPU(EmbeddingMaker_GPU* thing){
-
-}
-
-
 // apply momenta to Xld, regenerate Xld_nesterov, decay momenta
 void apply_momenta_and_decay_GPU(EmbeddingMaker_GPU* thing){
     // get the repulsion multiplier hyperparameter
-    /* pthread_mutex_lock(thing->mutex_hparam_repulsion_multiplier);
+    pthread_mutex_lock(thing->mutex_hparam_repulsion_multiplier);
     float repulsion_multiplier = thing->hparam_repulsion_multiplier[0];
-    pthread_mutex_unlock(thing->mutex_hparam_repulsion_multiplier); */
+    pthread_mutex_unlock(thing->mutex_hparam_repulsion_multiplier);
+   
+    // ----------- 1: determine which momentum is to be used at this iteration -----------
+    float* cu_momentum_far;
+    if(thing->leak_phase){
+        cu_momentum_far = thing->cu_momenta_repuls_far___1;
+    } else {
+        cu_momentum_far = thing->cu_momenta_repuls_far___0;
+    }
+    
+    // ----------- 2: apply momenta to Xld, regenerate Xld_nesterov, decay & nudge momenta -----------
+    cuda_launch___apply_momenta_and_decay(thing->stream_parameter_updates, thing->Kern_parameter_updates_blockshape, thing->Kern_parameter_updates_gridshape,\
+        thing->N, thing->cu_Xld_base, thing->cu_Xld_nesterov,\
+        thing->cu_nudge_attrac_HD, thing->cu_nudge_repuls_HDLD, thing->cu_nudge_FAR,\
+        thing->cu_momenta_attrac, thing->cu_momenta_repuls_near, cu_momentum_far,\
+        repulsion_multiplier);
 }
 
 
@@ -481,9 +516,6 @@ void* routine_EmbeddingMaker_GPU(void* arg){
         // ~~~~~~~~~~ move points around in the embedding ~~~~~~~~~~
         // gradient descent: nudge things around a little bit, on the GPU 
         fill_nudges_GPU(thing);
-
-        // momentum leak: momenta_repulsion_far gets smoothed across neighbours (with conservation of movement)
-        momenta_leak_GPU(thing);
 
         // apply momenta to Xld, regenerate Xld_nesterov, decay momenta
         apply_momenta_and_decay_GPU(thing);

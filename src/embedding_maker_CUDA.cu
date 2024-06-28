@@ -285,15 +285,11 @@ __global__ void leak_kernel(uint32_t N, uint32_t* cu_neighsLD, float* momenta_sr
     uint32_t j             = cu_neighsLD[i * Kld + k]; 
     uint32_t tid           = threadIdx.x + threadIdx.y * Kld; // index within the block
 
-     // ~~~~~~~~~~~~~~~~~~~ Initialise registers: source from j ~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~ Initialise registers: source from j ~~~~~~~~~~~~~~~~~~~
     float src_j[Mld];
     #pragma unroll
     for (uint32_t m = 0u; m < Mld; m++) { // fetch source from DRAM
-        src_j[m] = momenta_src[j*Mld + m];
-        // add a random value
-        /* uint32_t seed = i + j + m + k;
-        src_j[m] += (float) random_uint32_t_xorshift32(&seed) * 0.00000000023283064365386962890625f; */
-        }
+        src_j[m] = momenta_src[j*Mld + m];}
 
     // ~~~~~~~~~~~~~~~~~~~ Initialise shared memory ~~~~~~~~~~~~~~~~~~~
     extern __shared__ float smem5[];
@@ -310,52 +306,28 @@ __global__ void leak_kernel(uint32_t N, uint32_t* cu_neighsLD, float* momenta_sr
     // raw leak: 0.5 * (src_i + src_j)
     #pragma unroll
     for(uint32_t m = 0u; m < Mld; m++){
-        float mean_v = 0.5 * (src_i[m] + src_j[m]);
+        float mean_v = (0.5 * (src_i[m] + src_j[m])) * __frcp_rn((float)Kld);
         rcv_ik[m*this_block_surface] = mean_v;
-    } 
-
-
-    // vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-    // vvvvvvvvvvvvvvv  quick sum to see   vvvvvvvvvvvvvvv
-    float sums0[Mld];
-    if(k == 0){
+    }
+    // write to global memory for point j (every thread does this: contention is low because of the random access pattern)
+    #pragma unroll
+    for(uint32_t m = 0u; m < Mld; m++){
+        float external_contribution = LEAK_ALPHA * rcv_ik[m*this_block_surface];
+        atomicAdd(&momenta_rcv[j*Mld + m], external_contribution);
+    }
+    // parallel sum reduction: prepare aggregation for point i
+    periodic_sumReduction_on_matrix(rcv_ik, Mld, this_block_surface, Kld, k); // syncthreads included in 1st instruction
+    // for i: do the self contribution here (not in j)
+    if(k == 0u){
         #pragma unroll
         for(uint32_t m = 0u; m < Mld; m++){
-            sums0[m] = 0.0f;
-            for(uint32_t kk = 0u; kk < Kld; kk++){
-                sums0[m] += rcv_ik[m*this_block_surface + kk];
-            }
+            float self_contribution     = (1.0f - LEAK_ALPHA) * src_i[m];
+            float external_contribution = LEAK_ALPHA * rcv_ik[m*this_block_surface];
+            atomicAdd(&momenta_rcv[i*Mld + m], self_contribution + external_contribution);
         }
     }
-    // vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-
-    // parallel sum reduction
-    periodic_sumReduction_on_matrix(rcv_ik, Mld, this_block_surface, Kld, k);
-    
-
-c'est ok le periodic reduction marche.cu_neighsLD
-du coup fire les atomic add (de reduction pourk ==0   et  puis vers j pour tout le monde)
-
-
-
-    // vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-    // quick check of the parallel reduction
-    if(k == 0){
-        for(uint32_t m = 0u; m < Mld; m++){
-            float sum_prev = sums0[m];
-            float sum_now  = rcv_ik[m*this_block_surface];
-            printf("%.4e %.4e\n", sum_prev, sum_now);
-        }
-    }
-    // vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-    
-
-
-
     return;
 }
-
-
 
 /* visual representation of shared memory:
         |[----- Mld -----]|    each row contains Xi
@@ -602,6 +574,25 @@ __global__ void final_sum_Qdenom_elements(double* cu_elements_of_Qdenom, float* 
     parallel_1dsumReduction_double(smem4, n_elements, tid);
     if(tid == 0u){
         atomicAdd(sum_Qdenom_elements, (float) smem4[0u]);}
+    return;
+}
+
+void cuda_launch___apply_momenta_and_decay(cudaStream_t stream_params, uint32_t* block_shape, uint32_t* grid_shape,\
+        uint32_t N, float* cu_Xld_base, float* cu_Xld_nesterov,\
+        float* cu_nudge_attrac_HD, float* cu_nudge_repuls_HDLD, float* cu_nudge_FAR,\
+        float* cu_momenta_attrac, float* cu_momenta_repuls_near, float* cu_momentum_far,\
+        float repulsion_multiplier){
+
+    // ~~~~~~~~~  prepare kernel calls ~~~~~~~~~
+    dim3 grid(grid_shape[0], grid_shape[1]);
+    dim3 block(block_shape[0], block_shape[1]);
+
+    // ~~~~~~~~~ apply momenta to Xld ~~~~~~~~~
+
+    // ~~~~~~~~~ regenerated nesterov parameters ~~~~~~~~~
+
+    // ~~~~~~~~~  nudge & decay momenta ~~~~~~~~~
+
     return;
 }
 
