@@ -130,7 +130,7 @@ void cuda_launch___apply_momenta_and_decay(cudaStream_t, uint32_t*, uint32_t*,\
         uint32_t, float*, float*,\
         float*, float*, float*,\
         float*, float*, float*,\
-        float);
+        float, float);
 
 
 #endif // EMBEDDING_MAKER_H

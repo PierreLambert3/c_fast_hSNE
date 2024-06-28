@@ -390,6 +390,7 @@ void apply_momenta_and_decay_GPU(EmbeddingMaker_GPU* thing){
     pthread_mutex_lock(thing->mutex_hparam_repulsion_multiplier);
     float repulsion_multiplier = thing->hparam_repulsion_multiplier[0];
     pthread_mutex_unlock(thing->mutex_hparam_repulsion_multiplier);
+    float lr = 0.0001f * (float)thing->N;
    
     // ----------- 1: determine which momentum is to be used at this iteration -----------
     float* cu_momentum_far;
@@ -404,7 +405,7 @@ void apply_momenta_and_decay_GPU(EmbeddingMaker_GPU* thing){
         thing->N, thing->cu_Xld_base, thing->cu_Xld_nesterov,\
         thing->cu_nudge_attrac_HD, thing->cu_nudge_repuls_HDLD, thing->cu_nudge_FAR,\
         thing->cu_momenta_attrac, thing->cu_momenta_repuls_near, cu_momentum_far,\
-        repulsion_multiplier);
+        repulsion_multiplier, lr);
 }
 
 

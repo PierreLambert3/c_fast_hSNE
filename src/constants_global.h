@@ -25,6 +25,9 @@ using define is very very stupid
 // target dimensionality of the embedding
 #define Mld 2u
 
+// momentum decay
+#define MOMENTUM_ALPHA 0.5f
+
 // a global epsilon for floating points equal to 1e-16
 #define FLOAT_EPS 1e-12f
 

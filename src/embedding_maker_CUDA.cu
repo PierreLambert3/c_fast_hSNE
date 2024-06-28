@@ -239,9 +239,11 @@ __global__ void interactions_far(uint32_t N, float* cu_Xld_nesterov, float Qdeno
     periodic_sumReduction_on_matrix(momenta_update_i_T, Mld, this_block_surface, NB_RANDOM_POINTS_FAR_REPULSION, k);
     // write to global memory for point i
     if(k == 0u){
+        float scaling_factor = (float) N / (float) NB_RANDOM_POINTS_FAR_REPULSION;
         #pragma unroll
         for(uint32_t m = 0u; m < Mld; m++){
-            atomicAdd(&cu_nudge_FAR[i * Mld + m], momenta_update_i_T[m*this_block_surface]);}
+            float scaled_value = momenta_update_i_T[m*this_block_surface] * scaling_factor;
+            atomicAdd(&cu_nudge_FAR[i * Mld + m], scaled_value);}
     }
 
     // ~~~~~~~~~~~~~~~~~~~ update the new seed for next iteration ~~~~~~~~~~~~~~~~~~~
@@ -577,22 +579,77 @@ __global__ void final_sum_Qdenom_elements(double* cu_elements_of_Qdenom, float* 
     return;
 }
 
+
+// grid 1d    ;     block 2d : (Mld, Ni)
+__global__ void apply_momenta_and_decay(uint32_t N, float* cu_Xld_base, float* cu_Xld_nesterov,\
+        float* cu_nudge_attrac_HD, float* cu_nudge_repuls_HDLD, float* cu_nudge_FAR,\
+        float* cu_momenta_attrac, float* cu_momenta_repuls_near, float* cu_momentum_far,\
+        float repulsion_multiplier, float lr){
+
+    // ~~~~~~~~~ determine which point (i) and ld variable (m) we're talking about ~~~~~~~~~
+    uint32_t i = blockIdx.x * blockDim.y + threadIdx.y;
+    if(i >= N){return;} // out of bounds
+    uint32_t m = threadIdx.x;
+
+    // ~~~~~~~~~ compute & save in a register the resultant momentum ~~~~~~~~~
+    float attraction = cu_momenta_attrac[i * Mld + m];
+    float repulsion  = cu_momenta_repuls_near[i * Mld + m] + cu_momentum_far[i * Mld + m];
+    // float effective_momentum_m = lr * (attraction + (repulsion * repulsion_multiplier));
+
+
+    // float far_scaling_factor = (float)N / (float)((150u + Kld + NB_RANDOM_POINTS_FAR_REPULSION));
+    // effective_momentum_m = 80.0f * lr * (cu_nudge_attrac_HD[i * Mld + m] + (cu_nudge_repuls_HDLD[i * Mld + m] + far_scaling_factor * cu_nudge_FAR[i * Mld + m]));
+    
+    // scaling factor added to far interactions calculation
+    float effective_momentum_m = 400.0f * lr * (cu_nudge_attrac_HD[i * Mld + m] + repulsion_multiplier * (cu_nudge_repuls_HDLD[i * Mld + m] + cu_nudge_FAR[i * Mld + m]));
+    todo: utiliser les momentum  (on probleme venait du fait que j avais oublié de up-scaler les interactions lointaines a cause du sampling)
+    
+    // repulsion far: scale pour avoir N interactions?
+    /* if((i%634) == 0){
+        printf("attraction: %.4e, repulsion: %.4e, effective_momentum_m: %.4e\n", attraction, repulsion, effective_momentum_m);
+        printf("nudge: %.4e, %.4e, %.4e\n", cu_nudge_attrac_HD[i * Mld + m], cu_nudge_repuls_HDLD[i * Mld + m], cu_nudge_FAR[i * Mld + m]);
+    } */
+
+    /* float random_float = ((float)((((uint32_t) (100000000.0f*cu_momenta_attrac[i * Mld + m])) % 1000u - 500u))) * 0.00001f;
+    effective_momentum_m = random_float; */
+
+    // ~~~~~~~~~ apply momenta to Xld & generated nesterov parameters ~~~~~~~~~
+    float new_x_parameter = cu_Xld_base[i * Mld + m] + 0.2f*effective_momentum_m;
+    float new_x_nesterov  = new_x_parameter + effective_momentum_m;
+    cu_Xld_base[i * Mld + m]     = new_x_parameter;
+    cu_Xld_nesterov[i * Mld + m] = new_x_nesterov;
+
+    // ~~~~~~~~~  update momenta (nudge & decay) ~~~~~~~~~
+    float new_attraction_momentum     = MOMENTUM_ALPHA*cu_momenta_attrac[i * Mld + m] + cu_nudge_attrac_HD[i * Mld + m];
+    float new_repulsion_momentum_near = MOMENTUM_ALPHA*cu_momenta_repuls_near[i * Mld + m] + cu_nudge_repuls_HDLD[i * Mld + m];
+    float new_repulsion_momentum_far  = MOMENTUM_ALPHA*cu_momentum_far[i * Mld + m] + cu_nudge_FAR[i * Mld + m];
+    /* cu_momenta_attrac[i * Mld + m]      = new_attraction_momentum;
+    cu_momenta_repuls_near[i * Mld + m] = new_repulsion_momentum_near;
+    cu_momentum_far[i * Mld + m]        = new_repulsion_momentum_far; */
+    cu_momenta_attrac[i * Mld + m]      = 0.0f;
+    cu_momenta_repuls_near[i * Mld + m] = 0.0f;
+    cu_momentum_far[i * Mld + m]        = 0.0f;
+
+    return;
+}
+
 void cuda_launch___apply_momenta_and_decay(cudaStream_t stream_params, uint32_t* block_shape, uint32_t* grid_shape,\
         uint32_t N, float* cu_Xld_base, float* cu_Xld_nesterov,\
         float* cu_nudge_attrac_HD, float* cu_nudge_repuls_HDLD, float* cu_nudge_FAR,\
         float* cu_momenta_attrac, float* cu_momenta_repuls_near, float* cu_momentum_far,\
-        float repulsion_multiplier){
+        float repulsion_multiplier, float lr){
 
     // ~~~~~~~~~  prepare kernel calls ~~~~~~~~~
     dim3 grid(grid_shape[0], grid_shape[1]);
     dim3 block(block_shape[0], block_shape[1]);
 
-    // ~~~~~~~~~ apply momenta to Xld ~~~~~~~~~
-
-    // ~~~~~~~~~ regenerated nesterov parameters ~~~~~~~~~
-
-    // ~~~~~~~~~  nudge & decay momenta ~~~~~~~~~
-
+    // ~~~~~~~~~ launch kernel ~~~~~~~~~
+    cudaStreamSynchronize(stream_params); // redundant but I'd say it's a safe practice
+    apply_momenta_and_decay<<<grid, block, 0, stream_params>>>(N, cu_Xld_base, cu_Xld_nesterov,\
+        cu_nudge_attrac_HD, cu_nudge_repuls_HDLD, cu_nudge_FAR,\
+        cu_momenta_attrac, cu_momenta_repuls_near, cu_momentum_far,\
+        repulsion_multiplier, lr);
+    cudaStreamSynchronize(stream_params);
     return;
 }
 
