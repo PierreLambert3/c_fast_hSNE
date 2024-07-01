@@ -112,8 +112,8 @@ int main() {
     uint32_t rand_state_main_thread = (uint32_t)time(NULL);
 
     // ~~~~~  initialise the common variables for the threads  ~~~~~
-    float     perplexity = 50.0f;
-    // float     perplexity = 5.0f;
+    // float     perplexity = 50.0f;
+    float     perplexity = 5.0f;
     pthread_mutex_t* mutex_perplexity = mutex_allocate_and_init();
     float     LD_kernel_alpha   = 1.0f;
     pthread_mutex_t* mutex_kernel_LD_alpha = mutex_allocate_and_init();

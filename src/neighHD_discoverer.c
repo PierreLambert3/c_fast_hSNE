@@ -658,7 +658,7 @@ void update_radii(SubthreadHD_data* thing){
 
         // binary search for the beta that gives the desired entropy
         bool converged = false;
-        while(!converged){
+        while(!converged && iter2 < 200u){
             iter2++;
             // compute entropy 
             float sumPi = 0.0f;
