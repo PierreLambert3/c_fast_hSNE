@@ -591,44 +591,37 @@ __global__ void apply_momenta_and_decay(uint32_t N, float* cu_Xld_base, float* c
     if(i >= N){return;} // out of bounds
     uint32_t m = threadIdx.x;
 
+    float base_lr = lr;
+    lr = base_lr * expf(-3.0f*MOMENTUM_ALPHA);
+
+    // ~~~~~~~~~  update momenta (nudge & decay) ~~~~~~~~~
+    float new_attraction_momentum     = MOMENTUM_ALPHA*cu_momenta_attrac[i * Mld + m]      + lr*cu_nudge_attrac_HD[i * Mld + m];
+    float new_repulsion_momentum_near = MOMENTUM_ALPHA*cu_momenta_repuls_near[i * Mld + m] + lr*cu_nudge_repuls_HDLD[i * Mld + m];
+    float new_repulsion_momentum_far  = MOMENTUM_ALPHA*cu_momentum_far[i * Mld + m]        + lr*cu_nudge_FAR[i * Mld + m];
+    cu_momenta_attrac[i * Mld + m]      = new_attraction_momentum;
+    cu_momenta_repuls_near[i * Mld + m] = new_repulsion_momentum_near;
+    cu_momentum_far[i * Mld + m]        = new_repulsion_momentum_far;
+    
     // ~~~~~~~~~ compute & save in a register the resultant momentum ~~~~~~~~~
     float attraction = cu_momenta_attrac[i * Mld + m];
     float repulsion  = cu_momenta_repuls_near[i * Mld + m] + cu_momentum_far[i * Mld + m];
-    // float effective_momentum_m = lr * (attraction + (repulsion * repulsion_multiplier));
-
-
-    // float far_scaling_factor = (float)N / (float)((150u + Kld + NB_RANDOM_POINTS_FAR_REPULSION));
-    // effective_momentum_m = 80.0f * lr * (cu_nudge_attrac_HD[i * Mld + m] + (cu_nudge_repuls_HDLD[i * Mld + m] + far_scaling_factor * cu_nudge_FAR[i * Mld + m]));
-    
-    // scaling factor added to far interactions calculation
-    float effective_momentum_m = 400.0f * lr * (cu_nudge_attrac_HD[i * Mld + m] + repulsion_multiplier * (cu_nudge_repuls_HDLD[i * Mld + m] + cu_nudge_FAR[i * Mld + m]));
-    todo: utiliser les momentum  (on probleme venait du fait que j avais oublié de up-scaler les interactions lointaines a cause du sampling)
-    
-    // repulsion far: scale pour avoir N interactions?
-    /* if((i%634) == 0){
-        printf("attraction: %.4e, repulsion: %.4e, effective_momentum_m: %.4e\n", attraction, repulsion, effective_momentum_m);
-        printf("nudge: %.4e, %.4e, %.4e\n", cu_nudge_attrac_HD[i * Mld + m], cu_nudge_repuls_HDLD[i * Mld + m], cu_nudge_FAR[i * Mld + m]);
-    } */
-
-    /* float random_float = ((float)((((uint32_t) (100000000.0f*cu_momenta_attrac[i * Mld + m])) % 1000u - 500u))) * 0.00001f;
-    effective_momentum_m = random_float; */
+    float movement   = (attraction + (repulsion_multiplier * repulsion));
 
     // ~~~~~~~~~ apply momenta to Xld & generated nesterov parameters ~~~~~~~~~
-    float new_x_parameter = cu_Xld_base[i * Mld + m] + 0.2f*effective_momentum_m;
-    float new_x_nesterov  = new_x_parameter + effective_momentum_m;
+    float new_x_parameter = cu_Xld_base[i * Mld + m] + movement;
+    float new_x_nesterov  = cu_Xld_base[i * Mld + m] + 1.9f * movement;
     cu_Xld_base[i * Mld + m]     = new_x_parameter;
     cu_Xld_nesterov[i * Mld + m] = new_x_nesterov;
 
-    // ~~~~~~~~~  update momenta (nudge & decay) ~~~~~~~~~
-    float new_attraction_momentum     = MOMENTUM_ALPHA*cu_momenta_attrac[i * Mld + m] + cu_nudge_attrac_HD[i * Mld + m];
-    float new_repulsion_momentum_near = MOMENTUM_ALPHA*cu_momenta_repuls_near[i * Mld + m] + cu_nudge_repuls_HDLD[i * Mld + m];
-    float new_repulsion_momentum_far  = MOMENTUM_ALPHA*cu_momentum_far[i * Mld + m] + cu_nudge_FAR[i * Mld + m];
-    /* cu_momenta_attrac[i * Mld + m]      = new_attraction_momentum;
-    cu_momenta_repuls_near[i * Mld + m] = new_repulsion_momentum_near;
-    cu_momentum_far[i * Mld + m]        = new_repulsion_momentum_far; */
-    cu_momenta_attrac[i * Mld + m]      = 0.0f;
-    cu_momenta_repuls_near[i * Mld + m] = 0.0f;
-    cu_momentum_far[i * Mld + m]        = 0.0f;
+    
+
+    // sleep for a bit
+    /* if((i % 100) == 0){
+        for(int i = 0; i < 10; i++){
+            printf("%u  ",i);
+        }
+    } */
+    
 
     return;
 }
@@ -727,9 +720,9 @@ void cuda_launch___fill_nudges_and_leak(cudaStream_t stream_nudge_HD, cudaStream
 
     // kernel 5 : leak the momenta
     cudaStreamSynchronize(stream_leak);
-    leak_kernel<<<Kern_leak_grid, Kern_leak_block, leak_sharedMemorySize, stream_leak>>>(N, cu_neighsLD, momentum_src_leak, momentum_rcv_leak);
+    /* leak_kernel<<<Kern_leak_grid, Kern_leak_block, leak_sharedMemorySize, stream_leak>>>(N, cu_neighsLD, momentum_src_leak, momentum_rcv_leak);
     cudaError_t err5 = cudaGetLastError();
-    if (err5 != cudaSuccess) {printf("Error in kernel 5: %s\n", cudaGetErrorString(err5));}
+    if (err5 != cudaSuccess) {printf("Error in kernel 5: %s\n", cudaGetErrorString(err5));} */
 
     // ~~~~~~~~~~~  update cu_furthest_neighdists_LD  ~~~~~~~~~
     cudaStreamSynchronize(stream_nudge_HD); // wait for the 1st kernel to finish (because it USES      cu_furthest_neighdists_LD)

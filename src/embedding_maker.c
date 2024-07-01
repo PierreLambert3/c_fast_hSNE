@@ -380,8 +380,8 @@ void fill_nudges_GPU(EmbeddingMaker_GPU* thing){
     float scaling_factor = (float) ((double) matrix_area / (double) n_samples_estim);
     float new_Qdenom = sum_Qdenom_elements_cpu * scaling_factor;
     // update the EMA of Qdenom
-    // thing->Qdenom_EMA = 0.9f * thing->Qdenom_EMA + 0.1f * new_Qdenom;
-    thing->Qdenom_EMA = new_Qdenom;
+    thing->Qdenom_EMA = 0.9f * thing->Qdenom_EMA + 0.1f * new_Qdenom;
+    // thing->Qdenom_EMA = new_Qdenom;
 }
 
 // apply momenta to Xld, regenerate Xld_nesterov, decay momenta
@@ -390,7 +390,9 @@ void apply_momenta_and_decay_GPU(EmbeddingMaker_GPU* thing){
     pthread_mutex_lock(thing->mutex_hparam_repulsion_multiplier);
     float repulsion_multiplier = thing->hparam_repulsion_multiplier[0];
     pthread_mutex_unlock(thing->mutex_hparam_repulsion_multiplier);
-    float lr = 0.0001f * (float)thing->N;
+    float lr = BASE_LR * thing->N;
+
+    printf("finir software pour jeudi\n");
    
     // ----------- 1: determine which momentum is to be used at this iteration -----------
     float* cu_momentum_far;

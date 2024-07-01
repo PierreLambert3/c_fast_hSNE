@@ -69,6 +69,12 @@ void init_Xld(float** Xhd, float** Xld, uint32_t N, uint32_t Mhd) {
     free_matrix((void**)Wproj, Mhd);
     // normalise Xld to have mean 0 and variance 1
     normalise_float_matrix(Xld, N, Mld);
+    // multiply by 1e-4f
+    /* for (uint32_t i = 0; i < N; i++) {
+        for (uint32_t j = 0; j < Mld; j++) {
+            Xld[i][j] *= 1e-4f;
+        }
+    } */
 }
     
 void init_neighbours_randomly(uint32_t N, uint32_t M, float** X, uint32_t K, uint32_t** neighs, float* furthest_neighdists) {
@@ -107,6 +113,7 @@ int main() {
 
     // ~~~~~  initialise the common variables for the threads  ~~~~~
     float     perplexity = 50.0f;
+    // float     perplexity = 5.0f;
     pthread_mutex_t* mutex_perplexity = mutex_allocate_and_init();
     float     LD_kernel_alpha   = 1.0f;
     pthread_mutex_t* mutex_kernel_LD_alpha = mutex_allocate_and_init();

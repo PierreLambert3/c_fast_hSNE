@@ -814,7 +814,7 @@ void* routine_NeighHDDiscoverer(void* arg) {
         // get the current value of N_subthreads_target, for use locally
         // 50:50 : 0.5*max:0.5*max     10:90 : 0.1*max:0.9*max
         pthread_mutex_lock(thing->mutex_LDHD_balance);
-        float other_pct = thing->other_space_pct[0];
+        float other_pct = thing->other_space_pct[0] * 0.1;
         float this_pct  = thing->pct_new_neighs;
         float total     = FLOAT_EPS + other_pct + this_pct;
         float ressource_allocation_ratio = this_pct / total;

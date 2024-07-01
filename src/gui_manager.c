@@ -25,7 +25,6 @@ void mid_colour(SDL_Renderer* renderer) {
     amber_colour(renderer);
 }
 
-
 void amber_colour(SDL_Renderer* renderer) {
     const int amber_r = 211;
     const int amber_g = 86;
@@ -100,12 +99,11 @@ void manage_events(SDL_Event* event, GuiManager* thing) {
     }
 }
 
-void slava_ukraini(SDL_Renderer* renderer){
-    // draw the flag of Ukraine for a bit, to annoy warmongers
+void loading_screen(SDL_Renderer* renderer){
+    // draw the flag of Ukraine for a bit, to annoy potential warmongers
     double start_time = (double)SDL_GetTicks();
     double elapsed_time = 0.0;
-    while(elapsed_time < 500.0){
-        // draw the flag of Ukraine
+    while(elapsed_time < 250.0){
         SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255);
         SDL_Rect rect1 = {0, 0, GUI_W, GUI_H/2};
         SDL_RenderFillRect(renderer, &rect1);
@@ -241,7 +239,7 @@ void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
         // first get the balance
         pthread_mutex_lock(thing->neighLD_discoverer->mutex_LDHD_balance);
         float HD_discopct = thing->neighLD_discoverer->other_space_pct[0];
-        float LD_discopct = thing->neighLD_discoverer->pct_new_neighs;
+        float LD_discopct = thing->neighLD_discoverer->pct_new_neighs * 0.1f;
         float total     = FLOAT_EPS + LD_discopct + HD_discopct;
         uint32_t LD_n_threads = (uint32_t)((LD_discopct / total) * (float)thing->neighLD_discoverer->N_reserved_subthreads);
         uint32_t HD_n_threads = (uint32_t)((HD_discopct / total) * (float)thing->neighHD_discoverer->N_reserved_subthreads);
@@ -350,8 +348,7 @@ int routine_GuiManager(void* arg) {
     background_colour(renderer);
     SDL_RenderClear(renderer);
 
-    // death to Putin
-    slava_ukraini(renderer);
+    loading_screen(renderer);
 
     // main loop
     const uint32_t target_frame_rate = 30; // in frames per second
