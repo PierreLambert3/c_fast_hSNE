@@ -112,13 +112,16 @@ int main() {
     uint32_t rand_state_main_thread = (uint32_t)time(NULL);
 
     // ~~~~~  initialise the common variables for the threads  ~~~~~
-    // float     perplexity = 50.0f;
+    // float     perplexity = 30.0f;
     float     perplexity = 5.0f;
     pthread_mutex_t* mutex_perplexity = mutex_allocate_and_init();
     float     LD_kernel_alpha   = 1.0f;
     pthread_mutex_t* mutex_kernel_LD_alpha = mutex_allocate_and_init();
     // Khd should be a power of 2, find the closest one to target_Khd
     uint32_t  Khd = (uint32_t)roundf(3.0f * perplexity);
+    if(Khd < 80u){
+        Khd = 80u;}
+
     // for memory efficiency, if using GPU, Kld should be a multiple of 32, round it up
     if(USE_GPU){
         Khd = ((Khd/32u)*32u) + 32u;}
@@ -147,14 +150,60 @@ int main() {
     printf("\n\nnb of threads for each role: HDneigh=%d, LDneigh=%d, embedding=%d, SDL=%d", n_threads_HDneigh, n_threads_LDneigh, n_threads_embedding, 1);
     // 1: load & normalise the MNIST dataset
     printf("\nloading MNIST dataset...\n");
+    
+    
+    
     uint32_t  N = 60000;
     // uint32_t  Mhd = 28*28;
     uint32_t  Mhd = 50;
     uint32_t* Y   = malloc_uint32_t(N, 0);
     float**   Xhd = malloc_float_matrix(N, Mhd, -42.0f);
     load_mnist(&N, &Mhd, Xhd, Y);
+
+   /*  uint32_t N = 1u;
+    uint32_t Mhd = 1u;
+    float**   Xhd;
+    uint32_t* Y;
+    load_mnist(&N, &Mhd, &Xhd, &Y); */
+
+faire que load mnist  ne depende pas de N et M 
+
+PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
+PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
+PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
+PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
+PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
+PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
+PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
+PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
+PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
+PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
+PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
+PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
+PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
+PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
+PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
+PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
+PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
+PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
+PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
+PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
+PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
+PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
+
+
+    for(uint32_t i = 0; i < N; i++){
+        printf("Y[%d]=%d\n", i, Y[i]);
+    }
+    printf("N=%d, Mhd=%d\n", N, Mhd);
+    die();
+
+
+
+
     printf("normalising MNIST dataset...\n");
     normalise_float_matrix(Xhd, N, Mhd); 
+
     printf("allocating internals...\n ");
     // create the mutex for each observation i
     pthread_mutex_t* mutexes_sizeN = mutexes_allocate_and_init(N);

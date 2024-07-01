@@ -607,11 +607,20 @@ void refine_HD_neighbours(SubthreadHD_data* thing){
     return;
 }
 
+/* float log_based(float base, float x){
+    return logf(x) / logf(base);
+} */
+
 void update_radii(SubthreadHD_data* thing){
+    // float base_of_log = 2.0f;
     float target_perplexity = thing->target_perplexity[0];
     float PP_tol = 0.01f * target_perplexity;
+    if(PP_tol < 0.05){
+        PP_tol = 0.05;}
     float R_entropy = logf(target_perplexity + PP_tol);
     float L_entropy = logf(target_perplexity - PP_tol);
+    /* float R_entropy = log_based(base_of_log, target_perplexity + PP_tol);
+    float L_entropy = log_based(base_of_log, target_perplexity - PP_tol); */
     float desired_entropy = (R_entropy + L_entropy) / 2.0f;
     
     float temp_pijs[thing->Khd];
@@ -645,6 +654,7 @@ void update_radii(SubthreadHD_data* thing){
                 sum_P_x_dist += (temp_pijs[k] / sumPi) * thing->dists_neighHD[i][k];
             }
             float entropy = logf(sumPi) + beta*sum_P_x_dist;
+            // float entropy = log_based(base_of_log, sumPi) + beta*sum_P_x_dist;
             float entropy_diff = entropy - desired_entropy;
             if(entropy_diff > 0.){
                 beta_min = beta;
@@ -655,7 +665,6 @@ void update_radii(SubthreadHD_data* thing){
                 beta     = (beta_max + beta_min) / 2.;
             }
         }
-
         // binary search for the beta that gives the desired entropy
         bool converged = false;
         while(!converged && iter2 < 200u){
@@ -674,6 +683,7 @@ void update_radii(SubthreadHD_data* thing){
                 sum_P_x_dist += (temp_pijs[k] / sumPi) * thing->dists_neighHD[i][k];
             }
             float entropy = logf(sumPi) + beta*sum_P_x_dist;
+            // float entropy = log_based(base_of_log, sumPi) + beta*sum_P_x_dist;
             converged = entropy > L_entropy && entropy < R_entropy;
             if(!converged){
                 float entropy_diff = entropy - desired_entropy;
@@ -686,6 +696,9 @@ void update_radii(SubthreadHD_data* thing){
                 }
             }
         }
+
+        
+
         // update the radius
         float new_radius = 1.0f / (beta + FLOAT_EPS);
         pthread_mutex_lock(&thing->mutexes_sizeN[i]);
@@ -695,6 +708,25 @@ void update_radii(SubthreadHD_data* thing){
         // float H  = obs_H(thing, i, thing->radii[i]);
         // float PP = expf(H);
         // printf("PP: %f  target: %f\n", PP, target_perplexity);
+
+
+
+        /* if(iter2 >= 200u){
+            float H  = obs_H(thing, i, thing->radii[i]);
+            float PP = expf(H);
+
+            float saved_radius_min = 1.0f / (saved_beta_min + FLOAT_EPS);
+            float saved_radius_max = 1.0f / (saved_beta_max + FLOAT_EPS);
+
+            float H_min  = obs_H(thing, i, saved_radius_min);
+            float PP_min = expf(H_min);
+            float H_max  = obs_H(thing, i, saved_radius_max);
+            float PP_max = expf(H_max);
+
+            printf("PP: %f  target: %f\n", PP, target_perplexity);
+            printf("PP_min: %f  PP_max: %f\n", PP_min, PP_max);
+            die();
+        } */
     }
 
     pthread_mutex_lock(thing->thread_mutex);
@@ -815,7 +847,7 @@ void* routine_NeighHDDiscoverer(void* arg) {
         // 50:50 : 0.5*max:0.5*max     10:90 : 0.1*max:0.9*max
         pthread_mutex_lock(thing->mutex_LDHD_balance);
         float other_pct = thing->other_space_pct[0] * 0.1;
-        float this_pct  = thing->pct_new_neighs;
+        float this_pct  = (thing->pct_new_neighs + HD_PCT_BIAS);
         float total     = FLOAT_EPS + other_pct + this_pct;
         float ressource_allocation_ratio = this_pct / total;
         uint32_t now_N_subthreads_target = (uint32_t)(ressource_allocation_ratio * (float)thing->N_reserved_subthreads);

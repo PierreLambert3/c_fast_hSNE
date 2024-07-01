@@ -18,6 +18,7 @@ using define is very very stupid
 
 // number of neighs to consider in LD
 #define Kld 16u  
+// #define Kld 32u*10u  
 
 // how much we leak the far relationships to nearby points (1 = full leak, 0 = no leak)
 #define LEAK_ALPHA 0.5f
@@ -25,11 +26,14 @@ using define is very very stupid
 // target dimensionality of the embedding
 #define Mld 2u
 
+// pct bias in the HD neighbours
+#define HD_PCT_BIAS 0.02f
+
 // momentum decay
 #define MOMENTUM_ALPHA 0.25f
 
 // base LR
-#define BASE_LR 0.01f
+#define BASE_LR 0.1f
 
 // a global epsilon for floating points equal to 1e-16
 #define FLOAT_EPS 1e-12f

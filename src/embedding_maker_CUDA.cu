@@ -592,7 +592,9 @@ __global__ void apply_momenta_and_decay(uint32_t N, float* cu_Xld_base, float* c
     uint32_t m = threadIdx.x;
 
     float base_lr = lr;
-    lr = base_lr * expf(-3.0f*MOMENTUM_ALPHA);
+    // lr = base_lr * expf(-3.0f*MOMENTUM_ALPHA);
+    lr = base_lr * (1.0f - MOMENTUM_ALPHA)* (1.0f - MOMENTUM_ALPHA);
+
 
     // ~~~~~~~~~  update momenta (nudge & decay) ~~~~~~~~~
     float new_attraction_momentum     = MOMENTUM_ALPHA*cu_momenta_attrac[i * Mld + m]      + lr*cu_nudge_attrac_HD[i * Mld + m];
@@ -612,17 +614,6 @@ __global__ void apply_momenta_and_decay(uint32_t N, float* cu_Xld_base, float* c
     float new_x_nesterov  = cu_Xld_base[i * Mld + m] + 1.9f * movement;
     cu_Xld_base[i * Mld + m]     = new_x_parameter;
     cu_Xld_nesterov[i * Mld + m] = new_x_nesterov;
-
-    
-
-    // sleep for a bit
-    /* if((i % 100) == 0){
-        for(int i = 0; i < 10; i++){
-            printf("%u  ",i);
-        }
-    } */
-    
-
     return;
 }
 
