@@ -1,9 +1,15 @@
 CC=gcc
 NVCC=nvcc
-NVCC_FLAGS=-O3
-GCC_FLAGS=-I. -I./mylibs -I./extlibs -I/usr/include/SDL2 -O3 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-unused-function -Wno-unused-variable -fopenmp 
+#NVCC_FLAGS=-O3
+#GCC_FLAGS=-I. -I./mylibs -I./extlibs -I/usr/include/SDL2 -O3 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-unused-function -Wno-unused-variable -fopenmp 
+#GCC_LDFLAGS=-lSDL2  -lSDL2_ttf -lm -fopenmp
+#NVCC_LDFLAGS=-lcudart -lSDL2 -lSDL2_ttf -lm -Xcompiler -fopenmp
+
+NVCC_FLAGS=-O3 --use_fast_math
+GCC_FLAGS=-I. -I./mylibs -I./extlibs -I/usr/include/SDL2 -O3 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-unused-function -Wno-unused-variable -ffast-math -fopenmp 
 GCC_LDFLAGS=-lSDL2  -lSDL2_ttf -lm -fopenmp
-NVCC_LDFLAGS=-lcudart -lSDL2 -lSDL2_ttf -lm -Xcompiler -fopenmp
+NVCC_LDFLAGS=-lcudart -lSDL2 -lSDL2_ttf -lm -Xcompiler -fopenmp,-ffast-math
+
 DEPS = $(wildcard *.h) $(wildcard mylibs/*.h) $(wildcard extlibs/*.h)
 SRC_DIRS = $(wildcard mylibs/*.c) $(wildcard extlibs/*.c)
 SRC_ROOT = $(wildcard *.c)

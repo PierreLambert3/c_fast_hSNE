@@ -70,11 +70,11 @@ void init_Xld(float** Xhd, float** Xld, uint32_t N, uint32_t Mhd) {
     // normalise Xld to have mean 0 and variance 1
     normalise_float_matrix(Xld, N, Mld);
     // multiply by 1e-4f
-    /* for (uint32_t i = 0; i < N; i++) {
+    for (uint32_t i = 0; i < N; i++) {
         for (uint32_t j = 0; j < Mld; j++) {
-            Xld[i][j] *= 1e-4f;
+            // Xld[i][j] *= 1e-4f;
         }
-    } */
+    }
 }
     
 void init_neighbours_randomly(uint32_t N, uint32_t M, float** X, uint32_t K, uint32_t** neighs, float* furthest_neighdists) {
@@ -111,16 +111,75 @@ int main() {
     // seed the random number generator for the threads
     uint32_t rand_state_main_thread = (uint32_t)time(NULL);
 
+
+
+
+
+
+
+
+
+    // 1: load & normalise the MNIST dataset
+    printf("\nloading MNIST dataset...\n");
+    
+    uint32_t N;
+    uint32_t Mhd;
+    uint32_t* Y;
+    float** Xhd;
+    load_mnist_2(&N, &Mhd, &Xhd, &Y);
+    // -------------------- FAKE DATA --------------------
+    // -------------------- FAKE DATA --------------------
+    // -------------------- FAKE DATA --------------------
+    // -------------------- FAKE DATA --------------------
+    // -------------------- FAKE DATA --------------------
+    // New dataset size
+    uint32_t seed1 = (uint32_t)time(NULL);
+    // uint32_t N_new = 1000 * 1000u;
+    uint32_t N_new = 330 * 1000u;
+    uint32_t M_new = Mhd; // Keeping the same dimensionality for simplicity
+    // Allocate memory for the new dataset
+    float** X_new   = malloc_float_matrix(N_new, M_new, 0.0f);
+    uint32_t* Y_new = (uint32_t*)malloc(N_new * sizeof(uint32_t));
+    // Fill the new dataset with fake data
+    for (uint32_t i = 0; i < N_new; i++) {
+        uint32_t copied_i = rand() % N;
+        for (uint32_t dim = 0; dim < M_new; dim++) {
+            float noise = rand_float(&seed1) * 0.01f;
+            X_new[i][dim] = Xhd[copied_i][dim] + noise;
+        }
+        Y_new[i] = Y[copied_i];
+    }
+    Xhd = X_new;
+    Y = Y_new;
+    N = N_new;
+    Mhd = M_new;
+    // -------------------- FAKE DATA --------------------
+    // -------------------- FAKE DATA --------------------
+    // -------------------- FAKE DATA --------------------
+    // -------------------- FAKE DATA --------------------
+    // -------------------- FAKE DATA --------------------
+
+
+
+
+
+
+
+
+
     // ~~~~~  initialise the common variables for the threads  ~~~~~
     // float     perplexity = 30.0f;
-    float     perplexity = 5.0f;
+    // float     perplexity = 5.0f;
+    float     perplexity = 60.0f;
     pthread_mutex_t* mutex_perplexity = mutex_allocate_and_init();
     float     LD_kernel_alpha   = 1.0f;
     pthread_mutex_t* mutex_kernel_LD_alpha = mutex_allocate_and_init();
     // Khd should be a power of 2, find the closest one to target_Khd
     uint32_t  Khd = (uint32_t)roundf(3.0f * perplexity);
-    if(Khd < 80u){
-        Khd = 80u;}
+    if(Khd < 64u){
+        Khd = 64u;}
+
+    
 
     // for memory efficiency, if using GPU, Kld should be a multiple of 32, round it up
     if(USE_GPU){
@@ -128,17 +187,6 @@ int main() {
 
     float     momentum_alpha    = 0.95f; // TODO : modulated by temporal alignment
     float     nesterov_alpha    = 0.05f;
-   /*  uint32_t  n_threads_HDneigh, n_threads_LDneigh, n_threads_embedding;
-    if(USE_GPU){
-        n_threads_HDneigh   = 1u + (uint32_t) ((float)machine_nb_processors * 0.3);
-        n_threads_LDneigh   = 1u + (uint32_t) ((float)machine_nb_processors * 0.7);
-        n_threads_embedding = 1u;
-    }
-    else{
-        n_threads_HDneigh   = 1u + (uint32_t) ((float)machine_nb_processors * 0.2);
-        n_threads_LDneigh   = 1u + (uint32_t) ((float)machine_nb_processors * 0.3);
-        n_threads_embedding = 1u + (uint32_t) ((float)machine_nb_processors * 0.4);
-    } */
     if(!USE_GPU){
         dying_breath("CPU version is not implemented yet. \n\
         Once done, don't forget to modify the DYNAMIC LD/HD thread balance accordingly");
@@ -148,57 +196,7 @@ int main() {
     uint32_t  n_threads_LDneigh   = machine_nb_processors;
     uint32_t  n_threads_embedding = USE_GPU ? 1u : machine_nb_processors;
     printf("\n\nnb of threads for each role: HDneigh=%d, LDneigh=%d, embedding=%d, SDL=%d", n_threads_HDneigh, n_threads_LDneigh, n_threads_embedding, 1);
-    // 1: load & normalise the MNIST dataset
-    printf("\nloading MNIST dataset...\n");
     
-    
-    
-    uint32_t  N = 60000;
-    // uint32_t  Mhd = 28*28;
-    uint32_t  Mhd = 50;
-    uint32_t* Y   = malloc_uint32_t(N, 0);
-    float**   Xhd = malloc_float_matrix(N, Mhd, -42.0f);
-    load_mnist(&N, &Mhd, Xhd, Y);
-
-   /*  uint32_t N = 1u;
-    uint32_t Mhd = 1u;
-    float**   Xhd;
-    uint32_t* Y;
-    load_mnist(&N, &Mhd, &Xhd, &Y); */
-
-faire que load mnist  ne depende pas de N et M 
-
-PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
-PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
-PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
-PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
-PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
-PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
-PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
-PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
-PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
-PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
-PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
-PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
-PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
-PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
-PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
-PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
-PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
-PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
-PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
-PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
-PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
-PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE 
-
-
-    for(uint32_t i = 0; i < N; i++){
-        printf("Y[%d]=%d\n", i, Y[i]);
-    }
-    printf("N=%d, Mhd=%d\n", N, Mhd);
-    die();
-
-
 
 
     printf("normalising MNIST dataset...\n");
@@ -252,7 +250,8 @@ PUIS FAIRE UN GIGA DATASE DE TAILLE 1M ET JE SUIS SUR QUE CA MARCHE VITE
     new_EmbeddingMaker(embedding_maker, N, &rand_state_main_thread, mutexes_sizeN,\
         Xld, Khd, neighsLD, neighsHD, furthest_neighdists_LD,\
         Psym, mutex_P,\
-        neighHD_discoverer->GPU_CPU_comms_neighsHD, neighLD_discoverer->GPU_CPU_comms_neighsLD, neighHD_discoverer->GPU_CPU_comms_Psym);
+        neighHD_discoverer->GPU_CPU_comms_neighsHD, neighLD_discoverer->GPU_CPU_comms_neighsLD, neighHD_discoverer->GPU_CPU_comms_Psym,\
+        &neighHD_discoverer->pct_new_neighs);
     
     // create & start the GUI, which in term will start the other threads
     GuiManager* gui_manager = (GuiManager*)malloc(sizeof(GuiManager));

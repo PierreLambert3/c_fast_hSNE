@@ -239,7 +239,7 @@ void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
         // first get the balance
         pthread_mutex_lock(thing->neighLD_discoverer->mutex_LDHD_balance);
         float HD_discopct = (thing->neighLD_discoverer->other_space_pct[0] + HD_PCT_BIAS);
-        float LD_discopct = thing->neighLD_discoverer->pct_new_neighs * 0.1f;
+        float LD_discopct = thing->neighLD_discoverer->pct_new_neighs * LD_PCT_BIAS_MUL;
         float total     = FLOAT_EPS + LD_discopct + HD_discopct;
         uint32_t LD_n_threads = (uint32_t)((LD_discopct / total) * (float)thing->neighLD_discoverer->N_reserved_subthreads);
         uint32_t HD_n_threads = (uint32_t)((HD_discopct / total) * (float)thing->neighHD_discoverer->N_reserved_subthreads);
@@ -279,6 +279,22 @@ void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
         draw_text(LD_str, renderer, thing->font, x-50, y_btm_left, textColor);
     }
 
+    // draw as text the x_span and y_span (precision: 2 digits)
+    int x0_span = 20;
+    int y0_span = 200;
+    SDL_Color textColor = {167, 80, 0, 0};
+    // clear small rectangle in black
+    SDL_Rect rect0span = {x0_span, y0_span-30, 100, 60};
+    background_colour(renderer);
+    SDL_RenderFillRect(renderer, &rect0span);
+    // draw x_span and y_span as text
+    char x_span_str[100];
+    sprintf(x_span_str, "%.2e", x_span);
+    draw_text(x_span_str, renderer, thing->font, x0_span, y0_span, textColor);
+    char y_span_str[100];
+    sprintf(y_span_str, "%.2e", y_span);
+    draw_text(y_span_str, renderer, thing->font, x0_span, y0_span+20, textColor);
+
    
     //clear a black rect 
     int x0 = 5;
@@ -288,7 +304,6 @@ void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
     SDL_RenderFillRect(renderer, &rect0);
     char elapsed_time_str[100];
     sprintf(elapsed_time_str, "%d", (int)thing->elapsed_1);
-    SDL_Color textColor = {255, 255, 255, 0};
     draw_text(elapsed_time_str, renderer, thing->font, 10, 10, textColor);
 
 
@@ -351,8 +366,23 @@ int routine_GuiManager(void* arg) {
     loading_screen(renderer);
 
     // main loop
-    const uint32_t target_frame_rate = 30; // in frames per second
-    const uint32_t target_frame_time = 1000 / target_frame_rate; // in milliseconds
+    uint32_t target_frame_rate = 30u; // in frames per second
+    if(thing->N > 200u * 1000u){
+        target_frame_rate = 24u;
+    }
+    if(thing->N > 400u * 1000u){
+        target_frame_rate = 18u;
+    }
+    if(thing->N > 600u * 1000u){
+        target_frame_rate = 13u;
+    }
+    if(thing->N > 800u * 1000u){
+        target_frame_rate = 10u;
+    }
+    if(thing->N > 990u * 1000u){
+        target_frame_rate = 8u;
+    }
+    uint32_t target_frame_time = 1000 / target_frame_rate; // in milliseconds
     thing->isRunning = true;
     while (thing->isRunning) {
         uint32_t start_time = SDL_GetTicks();
@@ -370,6 +400,9 @@ int routine_GuiManager(void* arg) {
     // destroy everything
     destroy_GuiManager(thing);
     return 0;
+
+
+
 }
 
 

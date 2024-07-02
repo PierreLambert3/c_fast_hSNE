@@ -499,6 +499,7 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* cu_Xld_nest
     // individual updates to momenta for attraction
     float powerthing = 2.0f * powf(wij, __frcp_rn(alpha_cauchy));
     float common_attraction_gradient_multiplier =  pij * powerthing;
+    // float common_attraction_gradient_multiplier =  pij * 2.0f * powf(wij, __frcp_rn(alpha_cauchy));
     #pragma unroll
     for(uint32_t m = 0u; m < Mld; m++){
         float gradient = (Xi[m] - Xj[m]) * common_attraction_gradient_multiplier;
@@ -538,6 +539,7 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* cu_Xld_nest
             momenta_update_j_T[m*this_block_surface] = 0.0f;
         }
     }
+
     // aggregate the individual updates
     periodic_sumReduction_on_matrix(momenta_update_i_T, Mld, this_block_surface, Khd, k);
     // write to global memory for point i
@@ -590,11 +592,6 @@ __global__ void apply_momenta_and_decay(uint32_t N, float* cu_Xld_base, float* c
     uint32_t i = blockIdx.x * blockDim.y + threadIdx.y;
     if(i >= N){return;} // out of bounds
     uint32_t m = threadIdx.x;
-
-    float base_lr = lr;
-    // lr = base_lr * expf(-3.0f*MOMENTUM_ALPHA);
-    lr = base_lr * (1.0f - MOMENTUM_ALPHA)* (1.0f - MOMENTUM_ALPHA);
-
 
     // ~~~~~~~~~  update momenta (nudge & decay) ~~~~~~~~~
     float new_attraction_momentum     = MOMENTUM_ALPHA*cu_momenta_attrac[i * Mld + m]      + lr*cu_nudge_attrac_HD[i * Mld + m];

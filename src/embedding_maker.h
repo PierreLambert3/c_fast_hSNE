@@ -88,26 +88,30 @@ typedef struct {
     uint32_t        N_elements_of_Qdenom;
     double*         cu_elements_of_Qdenom; // will be on GPU as a 1d-array
     float*          cu_sum_Qdenom_elements;
+    float* HD_pct_new_neighs;
 } EmbeddingMaker_GPU;
 
 typedef struct {
     pthread_t thread;
     EmbeddingMaker_CPU* maker_cpu;
     EmbeddingMaker_GPU* maker_gpu;
+    float* HD_pct_new_neighs;
 } EmbeddingMaker;
 
 
 void  new_EmbeddingMaker(EmbeddingMaker* thing, uint32_t N, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
     float** Xld, uint32_t Khd, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD,\
     float** P, pthread_mutex_t* mutex_P,\
-    GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsHD, GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsLD, GPU_CPU_float_buffer* GPU_CPU_comms_P);
+    GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsHD, GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsLD, GPU_CPU_float_buffer* GPU_CPU_comms_P,\
+    float* pct_new_neighs_HD);
 void  new_EmbeddingMaker_CPU(EmbeddingMaker_CPU* thing, uint32_t N, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
     float** Xld, uint32_t Khd, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD,\
     float** P, pthread_mutex_t* mutex_P);
 void  new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
     float** Xld, uint32_t Khd, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD,\
     float** P, pthread_mutex_t* mutex_P,\
-    GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsHD, GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsLD, GPU_CPU_float_buffer* GPU_CPU_comms_P);
+    GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsHD, GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsLD, GPU_CPU_float_buffer* GPU_CPU_comms_P,\
+    float* pct_new_neighs_HD);
 void  destroy_EmbeddingMaker(EmbeddingMaker* thing);
 void* routine_EmbeddingMaker_CPU(void* arg);
 void* routine_EmbeddingMaker_GPU(void* arg);

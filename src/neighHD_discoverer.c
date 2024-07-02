@@ -102,6 +102,26 @@ void new_NeighHDDiscoverer(NeighHDDiscoverer* thing, uint32_t _N_, uint32_t _M_,
         subthread_data->random_indices_exploitation_LD = malloc_uint32_t(NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES, 0u);
         subthread_data->random_indices_exploitation_HD = malloc_uint32_t(NEIGH_NEAR_EXPLOITATION_HD_N_SAMPLES, 0u);
     }
+
+    uint32_t Ns = 10u;
+    if(thing->N > 2u * Ns){
+        printf("lets discover some neighbours in a sample wise manner\n");
+        uint32_t sampled_idices[Ns];
+        for(uint32_t j = 0u; j < Ns; j++){
+            sampled_idices[j] = rand_uint32_between(&thing->rand_state, 0u, thing->N);
+        }
+        for(uint32_t i = 0u; i < thing->N; i++){
+            for(uint32_t k = 0u; k < Ns; k++){
+                uint32_t j = sampled_idices[k];
+                if( i != j ){
+                    float euclsq_ij = f_euclidean_sq(thing->Xhd[i], thing->Xhd[j], thing->Mhd);
+                    attempt_to_add_HD_neighbour(i, j, euclsq_ij, thing->subthreadHD_data);
+                }
+            }
+        }
+    }
+    
+
 }
 
 void destroy_NeighHDDiscoverer(NeighHDDiscoverer* thing) {
@@ -217,6 +237,7 @@ void refine_HD_neighbours(SubthreadHD_data* thing){
         thing->random_indices_exploitation_HD[i] = rand_uint32_between(&thing->rand_state, 0u, thing->Khd);}
     
 
+
     // -----------------  for each point: -----------------
     // 1/  find new neighbours 
     // 2/  if i gets new neigh j :  flag of i is set (if j gets i: flag of j is set)
@@ -276,7 +297,31 @@ void refine_HD_neighbours(SubthreadHD_data* thing){
             }
             if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
                 if(attempt_to_add_HD_neighbour(j, i, euclsq_ij, thing)){
-                    new_neigh = true;}
+                    new_neigh = true;
+                    // propagate the new neighbour to HD_NEIGH_PROPAGATION_N other neighbours
+                    for(uint32_t k = 0u; k < thing->Khd; k++){
+                        uint32_t j_candidate = thing->neighsHD[j][k];
+                        if(j_candidate != i){
+                            uint32_t i_1 = i < j_candidate ? i : j_candidate;
+                            uint32_t i_2 = i < j_candidate ? j_candidate : i;
+                            pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
+                            pthread_mutex_lock(&thing->mutexes_sizeN[i_2]);
+                            float euclsq_ij_candidate = f_euclidean_sq(thing->Xhd[i], thing->Xhd[j_candidate], thing->Mhd);
+                            float furthest_d_i_candidate = thing->furthest_neighdists_HD[i];
+                            float furthest_d_j_candidate = thing->furthest_neighdists_HD[j_candidate];
+                            pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
+                            pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]);
+                            if(euclsq_ij_candidate < furthest_d_i_candidate){
+                                if(attempt_to_add_HD_neighbour(i, j_candidate, euclsq_ij_candidate, thing)){
+                                    new_neigh = true;}
+                            }
+                            if(euclsq_ij_candidate < furthest_d_j_candidate){
+                                if(attempt_to_add_HD_neighbour(j_candidate, i, euclsq_ij_candidate, thing)){
+                                    new_neigh = true;}
+                            }
+                        }
+                    }
+                }
             }
         }
         // 2: exploitation: neighbour of neighbour
@@ -326,7 +371,31 @@ void refine_HD_neighbours(SubthreadHD_data* thing){
             }
             if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
                 if(attempt_to_add_HD_neighbour(j, i, euclsq_ij, thing)){
-                    new_neigh = true;}
+                    new_neigh = true;
+                    // propagate the new neighbour to 5 other neighbours
+                    for(uint32_t k = 0u; k < thing->Khd; k++){
+                        uint32_t j_candidate = thing->neighsHD[j][k];
+                        if(j_candidate != i){
+                            uint32_t i_1 = i < j_candidate ? i : j_candidate;
+                            uint32_t i_2 = i < j_candidate ? j_candidate : i;
+                            pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
+                            pthread_mutex_lock(&thing->mutexes_sizeN[i_2]);
+                            float euclsq_ij_candidate = f_euclidean_sq(thing->Xhd[i], thing->Xhd[j_candidate], thing->Mhd);
+                            float furthest_d_i_candidate = thing->furthest_neighdists_HD[i];
+                            float furthest_d_j_candidate = thing->furthest_neighdists_HD[j_candidate];
+                            pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
+                            pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]);
+                            if(euclsq_ij_candidate < furthest_d_i_candidate){
+                                if(attempt_to_add_HD_neighbour(i, j_candidate, euclsq_ij_candidate, thing)){
+                                    new_neigh = true;}
+                            }
+                            if(euclsq_ij_candidate < furthest_d_j_candidate){
+                                if(attempt_to_add_HD_neighbour(j_candidate, i, euclsq_ij_candidate, thing)){
+                                    new_neigh = true;}
+                            }
+                        }
+                    }
+                }
             }
         }
         // 2.2 : bias towards small k values
@@ -383,7 +452,31 @@ void refine_HD_neighbours(SubthreadHD_data* thing){
             }
             if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
                 if(attempt_to_add_HD_neighbour(j, i, euclsq_ij, thing)){
-                    new_neigh = true;}
+                    new_neigh = true;
+                    // propagate the new neighbour to 5 other neighbours
+                    for(uint32_t k = 0u; k < thing->Khd; k++){
+                        uint32_t j_candidate = thing->neighsHD[j][k];
+                        if(j_candidate != i){
+                            uint32_t i_1 = i < j_candidate ? i : j_candidate;
+                            uint32_t i_2 = i < j_candidate ? j_candidate : i;
+                            pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
+                            pthread_mutex_lock(&thing->mutexes_sizeN[i_2]);
+                            float euclsq_ij_candidate = f_euclidean_sq(thing->Xhd[i], thing->Xhd[j_candidate], thing->Mhd);
+                            float furthest_d_i_candidate = thing->furthest_neighdists_HD[i];
+                            float furthest_d_j_candidate = thing->furthest_neighdists_HD[j_candidate];
+                            pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
+                            pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]);
+                            if(euclsq_ij_candidate < furthest_d_i_candidate){
+                                if(attempt_to_add_HD_neighbour(i, j_candidate, euclsq_ij_candidate, thing)){
+                                    new_neigh = true;}
+                            }
+                            if(euclsq_ij_candidate < furthest_d_j_candidate){
+                                if(attempt_to_add_HD_neighbour(j_candidate, i, euclsq_ij_candidate, thing)){
+                                    new_neigh = true;}
+                            }
+                        }
+                    }
+                }
             }
         }
         if(k1 > 0u){
@@ -478,7 +571,31 @@ void refine_HD_neighbours(SubthreadHD_data* thing){
             }
             if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
                 if(attempt_to_add_HD_neighbour(j, i, euclsq_ij, thing)){
-                    new_neigh = true;}
+                    new_neigh = true;
+                    // propagate the new neighbour to HD_NEIGH_PROPAGATION_N other neighbours
+                    for(uint32_t k = 0u; k < thing->Khd; k++){
+                        uint32_t j_candidate = thing->neighsHD[j][k];
+                        if(j_candidate != i){
+                            uint32_t i_1 = i < j_candidate ? i : j_candidate;
+                            uint32_t i_2 = i < j_candidate ? j_candidate : i;
+                            pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
+                            pthread_mutex_lock(&thing->mutexes_sizeN[i_2]);
+                            float euclsq_ij_candidate = f_euclidean_sq(thing->Xhd[i], thing->Xhd[j_candidate], thing->Mhd);
+                            float furthest_d_i_candidate = thing->furthest_neighdists_HD[i];
+                            float furthest_d_j_candidate = thing->furthest_neighdists_HD[j_candidate];
+                            pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
+                            pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]);
+                            if(euclsq_ij_candidate < furthest_d_i_candidate){
+                                if(attempt_to_add_HD_neighbour(i, j_candidate, euclsq_ij_candidate, thing)){
+                                    new_neigh = true;}
+                            }
+                            if(euclsq_ij_candidate < furthest_d_j_candidate){
+                                if(attempt_to_add_HD_neighbour(j_candidate, i, euclsq_ij_candidate, thing)){
+                                    new_neigh = true;}
+                            }
+                        }
+                    }
+                }
             }
         }
         j = thing->neighsHD[thing->neighsHD[i][kmin2]][kmin1];
@@ -522,56 +639,107 @@ void refine_HD_neighbours(SubthreadHD_data* thing){
             }
             if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
                 if(attempt_to_add_HD_neighbour(j, i, euclsq_ij, thing)){
-                    new_neigh = true;}
-            }
-        }
-
-        // 4: exploitation: neighbour from neighbour list of the other space
-        uint32_t kld = thing->random_indices_exploitation_LD[i%NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES];
-        j = thing->neighsLD[i][kld];
-        if(i!=j){
-            uint32_t i_1 = i < j ? i : j;
-            uint32_t i_2 = i < j ? j : i;
-            pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
-            pthread_mutex_lock(&thing->mutexes_sizeN[i_2]); 
-            euclsq_ij    = f_euclidean_sq(thing->Xhd[i], thing->Xhd[j], thing->Mhd);
-            furthest_d_i = thing->furthest_neighdists_HD[i];
-            furthest_d_j = thing->furthest_neighdists_HD[j];
-            pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
-            pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]); 
-            if(euclsq_ij < furthest_d_i){ // if j should be a new neighbour to i
-                if(attempt_to_add_HD_neighbour(i, j, euclsq_ij, thing)){
                     new_neigh = true;
-
+                    // propagate the new neighbour to 5 other neighbours
                     for(uint32_t k = 0u; k < thing->Khd; k++){
-                        uint32_t i_candidate = thing->neighsHD[i][k];
-                        if(i_candidate != j){
-                            uint32_t i_1 = i_candidate < j ? i_candidate : j;
-                            uint32_t i_2 = i_candidate < j ? j : i_candidate;
+                        uint32_t j_candidate = thing->neighsHD[j][k];
+                        if(j_candidate != i){
+                            uint32_t i_1 = i < j_candidate ? i : j_candidate;
+                            uint32_t i_2 = i < j_candidate ? j_candidate : i;
                             pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
                             pthread_mutex_lock(&thing->mutexes_sizeN[i_2]);
-                            float euclsq_ij_candidate = f_euclidean_sq(thing->Xhd[i_candidate], thing->Xhd[j], thing->Mhd);
-                            float furthest_d_i_candidate = thing->furthest_neighdists_HD[i_candidate];
-                            float furthest_d_j_candidate = thing->furthest_neighdists_HD[j];
+                            float euclsq_ij_candidate = f_euclidean_sq(thing->Xhd[i], thing->Xhd[j_candidate], thing->Mhd);
+                            float furthest_d_i_candidate = thing->furthest_neighdists_HD[i];
+                            float furthest_d_j_candidate = thing->furthest_neighdists_HD[j_candidate];
                             pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
                             pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]);
                             if(euclsq_ij_candidate < furthest_d_i_candidate){
-                                if(attempt_to_add_HD_neighbour(i_candidate, j, euclsq_ij_candidate, thing)){
+                                if(attempt_to_add_HD_neighbour(i, j_candidate, euclsq_ij_candidate, thing)){
                                     new_neigh = true;}
                             }
                             if(euclsq_ij_candidate < furthest_d_j_candidate){
-                                if(attempt_to_add_HD_neighbour(j, i_candidate, euclsq_ij_candidate, thing)){
+                                if(attempt_to_add_HD_neighbour(j_candidate, i, euclsq_ij_candidate, thing)){
                                     new_neigh = true;}
                             }
                         }
                     }
                 }
             }
-            if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
-                if(attempt_to_add_HD_neighbour(j, i, euclsq_ij, thing)){
-                    new_neigh = true;}
+        }
+
+
+        // 4: exploitation: neighbour from neighbour list of the other space
+        for(uint32_t idx = 0; idx < 5; idx++){
+            uint32_t kld = thing->random_indices_exploitation_LD[(i+idx)%NEIGH_NEAR_EXPLOITATION_LD_N_SAMPLES];
+            j = thing->neighsLD[i][kld];
+            if(i!=j){
+                uint32_t i_1 = i < j ? i : j;
+                uint32_t i_2 = i < j ? j : i;
+                pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
+                pthread_mutex_lock(&thing->mutexes_sizeN[i_2]); 
+                euclsq_ij    = f_euclidean_sq(thing->Xhd[i], thing->Xhd[j], thing->Mhd);
+                furthest_d_i = thing->furthest_neighdists_HD[i];
+                furthest_d_j = thing->furthest_neighdists_HD[j];
+                pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
+                pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]); 
+                if(euclsq_ij < furthest_d_i){ // if j should be a new neighbour to i
+                    if(attempt_to_add_HD_neighbour(i, j, euclsq_ij, thing)){
+                        new_neigh = true;
+
+                        for(uint32_t k = 0u; k < thing->Khd; k++){
+                            uint32_t i_candidate = thing->neighsHD[i][k];
+                            if(i_candidate != j){
+                                uint32_t i_1 = i_candidate < j ? i_candidate : j;
+                                uint32_t i_2 = i_candidate < j ? j : i_candidate;
+                                pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
+                                pthread_mutex_lock(&thing->mutexes_sizeN[i_2]);
+                                float euclsq_ij_candidate = f_euclidean_sq(thing->Xhd[i_candidate], thing->Xhd[j], thing->Mhd);
+                                float furthest_d_i_candidate = thing->furthest_neighdists_HD[i_candidate];
+                                float furthest_d_j_candidate = thing->furthest_neighdists_HD[j];
+                                pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
+                                pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]);
+                                if(euclsq_ij_candidate < furthest_d_i_candidate){
+                                    if(attempt_to_add_HD_neighbour(i_candidate, j, euclsq_ij_candidate, thing)){
+                                        new_neigh = true;}
+                                }
+                                if(euclsq_ij_candidate < furthest_d_j_candidate){
+                                    if(attempt_to_add_HD_neighbour(j, i_candidate, euclsq_ij_candidate, thing)){
+                                        new_neigh = true;}
+                                }
+                            }
+                        }
+                    }
+                }
+                if(euclsq_ij < furthest_d_j){ // if i should be a new neighbour to j
+                    if(attempt_to_add_HD_neighbour(j, i, euclsq_ij, thing)){
+                        new_neigh = true;
+                        for(uint32_t k = 0u; k < thing->Khd; k++){
+                            uint32_t j_candidate = thing->neighsHD[j][k];
+                            if(j_candidate != i){
+                                uint32_t i_1 = i < j_candidate ? i : j_candidate;
+                                uint32_t i_2 = i < j_candidate ? j_candidate : i;
+                                pthread_mutex_lock(&thing->mutexes_sizeN[i_1]);
+                                pthread_mutex_lock(&thing->mutexes_sizeN[i_2]);
+                                float euclsq_ij_candidate = f_euclidean_sq(thing->Xhd[i], thing->Xhd[j_candidate], thing->Mhd);
+                                float furthest_d_i_candidate = thing->furthest_neighdists_HD[i];
+                                float furthest_d_j_candidate = thing->furthest_neighdists_HD[j_candidate];
+                                pthread_mutex_unlock(&thing->mutexes_sizeN[i_2]);
+                                pthread_mutex_unlock(&thing->mutexes_sizeN[i_1]);
+                                if(euclsq_ij_candidate < furthest_d_i_candidate){
+                                    if(attempt_to_add_HD_neighbour(i, j_candidate, euclsq_ij_candidate, thing)){
+                                        new_neigh = true;}
+                                }
+                                if(euclsq_ij_candidate < furthest_d_j_candidate){
+                                    if(attempt_to_add_HD_neighbour(j_candidate, i, euclsq_ij_candidate, thing)){
+                                        new_neigh = true;}
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
+        
 
         // 5: sorting : refine the neighbour ordering stochatically and quickly
         if(new_neigh || ((i%NEIGH_NEAR_EXPLOITATION_HD_N_SAMPLES) < 1)){
@@ -846,7 +1014,7 @@ void* routine_NeighHDDiscoverer(void* arg) {
         // get the current value of N_subthreads_target, for use locally
         // 50:50 : 0.5*max:0.5*max     10:90 : 0.1*max:0.9*max
         pthread_mutex_lock(thing->mutex_LDHD_balance);
-        float other_pct = thing->other_space_pct[0] * 0.1;
+        float other_pct = thing->other_space_pct[0] * LD_PCT_BIAS_MUL;
         float this_pct  = (thing->pct_new_neighs + HD_PCT_BIAS);
         float total     = FLOAT_EPS + other_pct + this_pct;
         float ressource_allocation_ratio = this_pct / total;

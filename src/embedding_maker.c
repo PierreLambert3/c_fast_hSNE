@@ -9,7 +9,8 @@ void new_EmbeddingMaker_CPU(EmbeddingMaker_CPU* thing, uint32_t N, uint32_t* thr
 void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thread_rand_seed, pthread_mutex_t* mutexes_sizeN,\
         float** Xld, uint32_t Khd, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD,\
         float** P, pthread_mutex_t* mutex_P,\
-    GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsHD, GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsLD, GPU_CPU_float_buffer* GPU_CPU_comms_P){
+    GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsHD, GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsLD, GPU_CPU_float_buffer* GPU_CPU_comms_P,\
+    float* pct_new_neighs_HD){
     thing->mutex_thread = mutex_allocate_and_init();
     thing->rand_state = ++thread_rand_seed[0];
     thing->is_running = false;
@@ -26,6 +27,7 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     thing->neighsHD_cpu = neighsHD;
     thing->furthest_neighdists_LD_cpu = furthest_neighdists_LD;
     thing->mutex_P = mutex_P;
+    thing->HD_pct_new_neighs = pct_new_neighs_HD;
 
     // if Khd is not a multiple of 32, die
     if(Khd % 32 != 0){
@@ -343,8 +345,8 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
 // 1: gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion
 // 2: this also recomputes the furthest_neighdists_LD
 void fill_nudges_GPU(EmbeddingMaker_GPU* thing){
-    printf("ajouter -fastmath et cie\n");
-    printf("liste des optimisations: -ffast-math  -funsafe-math-optimizations -ffinite-math-only -fno-trapping-math -fassociative-math -freciprocal-math -fmerge-all-constants -Ofast  (YOLO)\n");
+    // printf("ajouter -fastmath et cie\n");
+    // printf("liste des optimisations: -ffast-math  -funsafe-math-optimizations -ffinite-math-only -fno-trapping-math -fassociative-math -freciprocal-math -fmerge-all-constants -Ofast  (YOLO)\n");
 
     // get the alpha hyperparameter, for the simplified Cauchy kernel
     pthread_mutex_lock(thing->mutex_hparam_LDkernel_alpha);
@@ -382,18 +384,35 @@ void fill_nudges_GPU(EmbeddingMaker_GPU* thing){
     // update the EMA of Qdenom
     thing->Qdenom_EMA = 0.9f * thing->Qdenom_EMA + 0.1f * new_Qdenom;
     // thing->Qdenom_EMA = new_Qdenom;
+
+
+    // printf("pour stabilité across distributions/N : normaliser la résultante (attrac+repuls) des gradients\n");
 }
 
 // apply momenta to Xld, regenerate Xld_nesterov, decay momenta
 void apply_momenta_and_decay_GPU(EmbeddingMaker_GPU* thing){
     // get the repulsion multiplier hyperparameter
     pthread_mutex_lock(thing->mutex_hparam_repulsion_multiplier);
+
+    // *thing->hparam_repulsion_multiplier = 0.02f + 0.18f * powf((1.0 - thing->HD_pct_new_neighs[0]), 2.0f);
+    *thing->hparam_repulsion_multiplier = 0.02f + 0.18f * powf((1.0 - thing->HD_pct_new_neighs[0]), 2.0f);
+    printf("RESETTING repulsion multiplier to %f  (en atendant le cursor)\n", *thing->hparam_repulsion_multiplier);
+
+
+    faire curseur pour le repulsion multiplier
+
     float repulsion_multiplier = thing->hparam_repulsion_multiplier[0];
     pthread_mutex_unlock(thing->mutex_hparam_repulsion_multiplier);
-    float lr = BASE_LR * thing->N;
+    
+    /* float penalty_innit   = powf((1.0 - thing->HD_pct_new_neighs[0]), 2.0f); 
+    float lr              = penalty_innit * BASE_LR * thing->N;
+    lr                    = lr * (1.0f - MOMENTUM_ALPHA)* (1.0f - MOMENTUM_ALPHA);
+    repulsion_multiplier *= 0.02 + 0.98*penalty_innit; */
 
-    printf("finir software pour jeudi\n");
-   
+
+    float lr = BASE_LR * thing->N * (1.0f - MOMENTUM_ALPHA)* (1.0f - MOMENTUM_ALPHA);
+    
+
     // ----------- 1: determine which momentum is to be used at this iteration -----------
     float* cu_momentum_far;
     if(thing->leak_phase){
@@ -416,14 +435,15 @@ void new_EmbeddingMaker(EmbeddingMaker* thing, uint32_t N, uint32_t* thread_rand
     float** Xld, uint32_t Khd, uint32_t** neighsLD, uint32_t** neighsHD, float* furthest_neighdists_LD,\
     float** P, pthread_mutex_t* mutex_P,\
     GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsHD, GPU_CPU_uint32_buffer* GPU_CPU_comms_neighsLD
-    , GPU_CPU_float_buffer* GPU_CPU_comms_P){
+    , GPU_CPU_float_buffer* GPU_CPU_comms_P, float* HD_pct_new_neighs){
     thing->maker_cpu = NULL;
     thing->maker_gpu = NULL;
+    thing->HD_pct_new_neighs = HD_pct_new_neighs;
     if(USE_GPU){
         thing->maker_gpu = (EmbeddingMaker_GPU*) malloc(sizeof(EmbeddingMaker_GPU));
         new_EmbeddingMaker_GPU(thing->maker_gpu, N, thread_rand_seed, mutexes_sizeN,\
             Xld, Khd, neighsLD, neighsHD, furthest_neighdists_LD, P, mutex_P,\
-            GPU_CPU_comms_neighsHD, GPU_CPU_comms_neighsLD, GPU_CPU_comms_P);
+            GPU_CPU_comms_neighsHD, GPU_CPU_comms_neighsLD, GPU_CPU_comms_P, HD_pct_new_neighs);
     } else {
         thing->maker_cpu = (EmbeddingMaker_CPU*) malloc(sizeof(EmbeddingMaker_CPU));
         new_EmbeddingMaker_CPU(thing->maker_cpu, N, thread_rand_seed, mutexes_sizeN,\
@@ -515,13 +535,25 @@ void* routine_EmbeddingMaker_GPU(void* arg){
     EmbeddingMaker_GPU* thing = (EmbeddingMaker_GPU*) arg;
     thing->is_running = true;
     double start_time = time_seconds();
-    while(thing->is_running){
-        // ~~~~~~~~~~ move points around in the embedding ~~~~~~~~~~
-        // gradient descent: nudge things around a little bit, on the GPU 
-        fill_nudges_GPU(thing);
+    double program_start = start_time;
 
-        // apply momenta to Xld, regenerate Xld_nesterov, decay momenta
-        apply_momenta_and_decay_GPU(thing);
+    // greasy
+    receive_neighs_and_P_from_CPU(thing);
+    usleep((int)(1.3f*GUI_CPU_SYNC_PERIOD*1000.0f));
+    receive_neighs_and_P_from_CPU(thing);
+    usleep((int)(1.3f*GUI_CPU_SYNC_PERIOD*1000.0f));
+    receive_neighs_and_P_from_CPU(thing);
+
+    while(thing->is_running){
+
+        // ~~~~~~~~~~ is some of the HD structs are captured: ~~~~~~~~~~
+        // ~~~~~~~~~~   move points around in the embedding   ~~~~~~~~~~
+        if(*(thing->HD_pct_new_neighs) < 1.0f){
+            // gradient descent: nudge things around a little bit, on the GPU 
+            fill_nudges_GPU(thing);
+            // apply momenta to Xld, regenerate Xld_nesterov, decay momenta
+            apply_momenta_and_decay_GPU(thing);
+        }
 
         // ~~~~~~~~~~ sync with CPU workers ~~~~~~~~~~
         // 1) "UNSAFE" syncs (only 1 writer so it's okay)
@@ -535,7 +567,8 @@ void* routine_EmbeddingMaker_GPU(void* arg){
 
         // ~~~~~~~~~~ phase toggle for momentum leaks ~~~~~~~~~~
         thing->leak_phase = (bool) (1 - thing->leak_phase);
-        printf("leak phase: %d\n", thing->leak_phase);
+        // sleep for 1ms, it's okay
+        usleep(1000);
     }
     return NULL; 
 }
