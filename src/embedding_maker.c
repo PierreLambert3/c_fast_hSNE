@@ -383,15 +383,20 @@ void fill_nudges_GPU(EmbeddingMaker_GPU* thing){
     float scaling_factor = (float) ((double) matrix_area / (double) n_samples_estim);
     float new_Qdenom = sum_Qdenom_elements_cpu * scaling_factor;
     // update the EMA of Qdenom
-    thing->Qdenom_EMA = 0.9f * thing->Qdenom_EMA + 0.1f * new_Qdenom;
-    // thing->Qdenom_EMA = new_Qdenom;
+    // thing->Qdenom_EMA = 0.9f * thing->Qdenom_EMA + 0.1f * new_Qdenom;
+    thing->Qdenom_EMA = new_Qdenom;
 
 
     // printf("pour stabilité across distributions/N : normaliser la résultante (attrac+repuls) des gradients\n");
 }
 
+piquer les voisins du github sur GPU  
+
+
 // apply momenta to Xld, regenerate Xld_nesterov, decay momenta
 void apply_momenta_and_decay_GPU(EmbeddingMaker_GPU* thing){
+    printf("clip gradients\n");
+
     // get the repulsion multiplier hyperparameter
     pthread_mutex_lock(thing->mutex_hparam_repulsion_multiplier);
 
@@ -573,7 +578,7 @@ void* routine_EmbeddingMaker_GPU(void* arg){
             pthread_mutex_lock(thing->mutex_rescale_embedding);
             thing->rescale_embedding = false;
             pthread_mutex_unlock(thing->mutex_rescale_embedding);
-            cuda_launch___rescale_embedding(thing->Kern_parameter_updates_blockshape, thing->Kern_parameter_updates_gridshape, thing->N, thing->cu_Xld_base, thing->cu_Xld_nesterov, thing->cu_momenta_attrac, thing->cu_momenta_repuls_near, thing->cu_momenta_repuls_far___0, thing->cu_momenta_repuls_far___1);
+            cuda_launch___rescale_embedding(thing->Kern_parameter_updates_blockshape, thing->Kern_parameter_updates_gridshape, thing->N, thing->cu_Xld_base, thing->cu_Xld_nesterov, thing->cu_momenta_attrac, thing->cu_momenta_repuls_near, thing->cu_momenta_repuls_far___0, thing->cu_momenta_repuls_far___1, thing->cu_nudge_attrac_HD, thing->cu_nudge_repuls_HDLD, thing->cu_nudge_FAR);
             // recompute neigh dists LD
             cuda_launch___recompute_LD_neighdists(thing->Kern_parameter_updates_blockshape, thing->Kern_parameter_updates_gridshape, thing->N, thing->cu_Xld_nesterov, thing->cu_neighsLD, thing->cu_furthest_neighdists_LD);
             //send data to CPU

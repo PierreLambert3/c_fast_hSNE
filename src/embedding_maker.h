@@ -143,7 +143,7 @@ void cuda_launch___apply_momenta_and_decay(cudaStream_t, uint32_t*, uint32_t*,\
 
 void cuda_launch___rescale_embedding(uint32_t*, uint32_t*,\
     uint32_t, float*, float*,\
-    float*, float*, float*, float*);
+    float*, float*, float*, float*, float*, float*, float*);
 
 void cuda_launch___recompute_LD_neighdists(uint32_t*, uint32_t*,\
     uint32_t, float*, uint32_t*, float*);

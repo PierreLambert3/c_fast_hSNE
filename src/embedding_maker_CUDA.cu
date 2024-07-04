@@ -239,7 +239,7 @@ __global__ void interactions_far(uint32_t N, float* cu_Xld_nesterov, float Qdeno
     periodic_sumReduction_on_matrix(momenta_update_i_T, Mld, this_block_surface, NB_RANDOM_POINTS_FAR_REPULSION, k);
     // write to global memory for point i
     if(k == 0u){
-        float scaling_factor = (float) N / (float) NB_RANDOM_POINTS_FAR_REPULSION;
+        float scaling_factor = 0.5f * (float) (N-1u) / (float) NB_RANDOM_POINTS_FAR_REPULSION;
         #pragma unroll
         for(uint32_t m = 0u; m < Mld; m++){
             float scaled_value = momenta_update_i_T[m*this_block_surface] * scaling_factor;
@@ -616,7 +616,8 @@ __global__ void apply_momenta_and_decay(uint32_t N, float* cu_Xld_base, float* c
 }
 
 // grid 1d    ;     block 2d : (Mld, Ni)
-__global__ void rescale_embedding(uint32_t N, float* cu_Xld_base, float* cu_Xld_nesterov, float* cu_momenta_attrac, float* cu_momenta_repuls_near, float* cu_momentum_far0, float* cu_momentum_far1){
+__global__ void rescale_embedding(uint32_t N, float* cu_Xld_base, float* cu_Xld_nesterov, float* cu_momenta_attrac, float* cu_momenta_repuls_near, float* cu_momentum_far0, float* cu_momentum_far1,\
+            float* cu_nudge_attrac_HD, float* cu_nudge_repuls_HDLD, float* cu_nudge_FAR){
     // ~~~~~~~~~ determine which point (i) and ld variable (m) we're talking about ~~~~~~~~~
     uint32_t i = blockIdx.x * blockDim.y + threadIdx.y;
     if(i >= N){return;} // out of bounds
@@ -630,6 +631,9 @@ __global__ void rescale_embedding(uint32_t N, float* cu_Xld_base, float* cu_Xld_
     cu_momenta_repuls_near[i * Mld + m] = 0.0f;
     cu_momentum_far0[i * Mld + m]       = 0.0f;
     cu_momentum_far1[i * Mld + m]       = 0.0f;
+    cu_nudge_attrac_HD[i * Mld + m]     = 0.0f;
+    cu_nudge_repuls_HDLD[i * Mld + m]   = 0.0f;
+    cu_nudge_FAR[i * Mld + m]           = 0.0f;
     return;
 }
 
@@ -663,6 +667,7 @@ __global__ void recompute_LD_neighdists(uint32_t N, float* cu_Xld_nesterov, uint
 }
 
 
+
 void cuda_launch___recompute_LD_neighdists(uint32_t* block_shape, uint32_t* grid_shape,\
             uint32_t N, float* cu_Xld_nesterov, uint32_t* cu_neighsLD, float* cu_furthest_neighdists_LD){
     // sync the whole device
@@ -677,7 +682,7 @@ void cuda_launch___recompute_LD_neighdists(uint32_t* block_shape, uint32_t* grid
     cudaDeviceSynchronize();
 }
 
-void cuda_launch___rescale_embedding(uint32_t* block_shape, uint32_t* grid_shape,uint32_t N, float* cu_Xld_base, float* cu_Xld_nesterov, float* cu_momenta_attrac, float* cu_momenta_repuls_near, float* cu_momentum_far0, float* cu_momentum_far1){
+void cuda_launch___rescale_embedding(uint32_t* block_shape, uint32_t* grid_shape,uint32_t N, float* cu_Xld_base, float* cu_Xld_nesterov, float* cu_momenta_attrac, float* cu_momenta_repuls_near, float* cu_momentum_far0, float* cu_momentum_far1, float* cu_nudge_attrac_HD, float* cu_nudge_repuls_HDLD, float* cu_nudge_FAR){
     // sync the whole device
     cudaDeviceSynchronize();
 
@@ -686,7 +691,7 @@ void cuda_launch___rescale_embedding(uint32_t* block_shape, uint32_t* grid_shape
     dim3 block(block_shape[0], block_shape[1]);
 
     // ~~~~~~~~~ launch kernel ~~~~~~~~~
-    rescale_embedding<<<grid, block>>>(N, cu_Xld_base, cu_Xld_nesterov, cu_momenta_attrac, cu_momenta_repuls_near, cu_momentum_far0, cu_momentum_far1);
+    rescale_embedding<<<grid, block>>>(N, cu_Xld_base, cu_Xld_nesterov, cu_momenta_attrac, cu_momenta_repuls_near, cu_momentum_far0, cu_momentum_far1, cu_nudge_attrac_HD, cu_nudge_repuls_HDLD, cu_nudge_FAR);
     cudaDeviceSynchronize();
 }
 

@@ -30,7 +30,7 @@ using define is very very stupid
 #define LD_PCT_BIAS_MUL 0.32f
 
 // repulsion multplier min and max
-#define REPULSION_MULTIPLIER_MIN 0.005f
+#define REPULSION_MULTIPLIER_MIN 0.0f
 #define REPULSION_MULTIPLIER_MAX 1.5f
 
 // alpha min and max
@@ -43,7 +43,7 @@ using define is very very stupid
 #define MOMENTUM_ALPHA 0.5f
 
 // base LR
-#define BASE_LR 0.1f
+#define BASE_LR 0.31f
 
 // a global epsilon for floating points equal to 1e-16
 #define FLOAT_EPS 1e-12f
