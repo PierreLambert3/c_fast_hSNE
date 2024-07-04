@@ -135,7 +135,7 @@ int main() {
     // New dataset size
     uint32_t seed1 = (uint32_t)time(NULL);
     // uint32_t N_new = 1000 * 1000u;
-    uint32_t N_new = 330 * 1000u;
+    uint32_t N_new = 500 * 1000u;
     uint32_t M_new = Mhd; // Keeping the same dimensionality for simplicity
     // Allocate memory for the new dataset
     float** X_new   = malloc_float_matrix(N_new, M_new, 0.0f);

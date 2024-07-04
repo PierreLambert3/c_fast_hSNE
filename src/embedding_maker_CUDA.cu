@@ -331,6 +331,8 @@ __global__ void leak_kernel(uint32_t N, uint32_t* cu_neighsLD, float* momenta_sr
     return;
 }
 
+
+
 /* visual representation of shared memory:
         |[----- Mld -----]|    each row contains Xi
         |        .        |                                           <----   this first block is of height Ni and width Mld
@@ -499,7 +501,6 @@ __global__ void interactions_K_HD(uint32_t N, float* dvc_Pij, float* cu_Xld_nest
     // individual updates to momenta for attraction
     float powerthing = 2.0f * powf(wij, __frcp_rn(alpha_cauchy));
     float common_attraction_gradient_multiplier =  pij * powerthing;
-    // float common_attraction_gradient_multiplier =  pij * 2.0f * powf(wij, __frcp_rn(alpha_cauchy));
     #pragma unroll
     for(uint32_t m = 0u; m < Mld; m++){
         float gradient = (Xi[m] - Xj[m]) * common_attraction_gradient_multiplier;
@@ -612,6 +613,81 @@ __global__ void apply_momenta_and_decay(uint32_t N, float* cu_Xld_base, float* c
     cu_Xld_base[i * Mld + m]     = new_x_parameter;
     cu_Xld_nesterov[i * Mld + m] = new_x_nesterov;
     return;
+}
+
+// grid 1d    ;     block 2d : (Mld, Ni)
+__global__ void rescale_embedding(uint32_t N, float* cu_Xld_base, float* cu_Xld_nesterov, float* cu_momenta_attrac, float* cu_momenta_repuls_near, float* cu_momentum_far0, float* cu_momentum_far1){
+    // ~~~~~~~~~ determine which point (i) and ld variable (m) we're talking about ~~~~~~~~~
+    uint32_t i = blockIdx.x * blockDim.y + threadIdx.y;
+    if(i >= N){return;} // out of bounds
+    uint32_t m = threadIdx.x;
+
+    // ~~~~~~~~~  rescale the embedding ~~~~~~~~~
+    float new_x_parameter = cu_Xld_base[i * Mld + m] / 10.0f;
+    cu_Xld_base[i * Mld + m]       = new_x_parameter;
+    cu_Xld_nesterov[i * Mld + m]   = new_x_parameter;
+    cu_momenta_attrac[i * Mld + m]      = 0.0f;
+    cu_momenta_repuls_near[i * Mld + m] = 0.0f;
+    cu_momentum_far0[i * Mld + m]       = 0.0f;
+    cu_momentum_far1[i * Mld + m]       = 0.0f;
+    return;
+}
+
+// grid 1d    ;     block 2d : (Mld, Ni)
+// no need for efficiency here, called rarely
+__global__ void recompute_LD_neighdists(uint32_t N, float* cu_Xld_nesterov, uint32_t* cu_neighsLD, float* cu_furthest_neighdists_LD){
+    // ~~~~~~~~~ determine which point (i) and ld variable (m) we're talking about ~~~~~~~~~
+    uint32_t i = blockIdx.x * blockDim.y + threadIdx.y;
+    if(i >= N){return;} // out of bounds
+    uint32_t m = threadIdx.x;
+    
+    if(m == 0u){
+        float furthest_neighdist = 0.0f;
+        float Xi[Mld];
+        #pragma unroll
+        for (uint32_t m = 0u; m < Mld; m++) { // fetch Xi from DRAM
+            Xi[m] = cu_Xld_nesterov[i * Mld + m];}
+        for(uint32_t k = 0u; k < Mld; k++){
+            float Xj[Mld];
+            #pragma unroll
+            for (uint32_t m = 0u; m < Mld; m++) { // fetch Xj from DRAM
+                Xj[m] = cu_Xld_nesterov[cu_neighsLD[i * Mld + k] * Mld + m];}
+            float eucl_sq = cuda_euclidean_sq(Xi, Xj);
+            if(eucl_sq > furthest_neighdist){
+                furthest_neighdist = eucl_sq;}
+        }
+        cu_furthest_neighdists_LD[i] = furthest_neighdist;
+    } // reset the furthest neighbour distance
+
+    return;
+}
+
+
+void cuda_launch___recompute_LD_neighdists(uint32_t* block_shape, uint32_t* grid_shape,\
+            uint32_t N, float* cu_Xld_nesterov, uint32_t* cu_neighsLD, float* cu_furthest_neighdists_LD){
+    // sync the whole device
+    cudaDeviceSynchronize();
+
+    // ~~~~~~~~~  prepare kernel calls ~~~~~~~~~
+    dim3 grid(grid_shape[0], grid_shape[1]);
+    dim3 block(block_shape[0], block_shape[1]);
+
+    // ~~~~~~~~~ launch kernel ~~~~~~~~~
+    recompute_LD_neighdists<<<grid, block>>>(N, cu_Xld_nesterov, cu_neighsLD, cu_furthest_neighdists_LD);
+    cudaDeviceSynchronize();
+}
+
+void cuda_launch___rescale_embedding(uint32_t* block_shape, uint32_t* grid_shape,uint32_t N, float* cu_Xld_base, float* cu_Xld_nesterov, float* cu_momenta_attrac, float* cu_momenta_repuls_near, float* cu_momentum_far0, float* cu_momentum_far1){
+    // sync the whole device
+    cudaDeviceSynchronize();
+
+    // ~~~~~~~~~  prepare kernel calls ~~~~~~~~~
+    dim3 grid(grid_shape[0], grid_shape[1]);
+    dim3 block(block_shape[0], block_shape[1]);
+
+    // ~~~~~~~~~ launch kernel ~~~~~~~~~
+    rescale_embedding<<<grid, block>>>(N, cu_Xld_base, cu_Xld_nesterov, cu_momenta_attrac, cu_momenta_repuls_near, cu_momentum_far0, cu_momentum_far1);
+    cudaDeviceSynchronize();
 }
 
 void cuda_launch___apply_momenta_and_decay(cudaStream_t stream_params, uint32_t* block_shape, uint32_t* grid_shape,\

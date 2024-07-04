@@ -75,6 +75,12 @@ void new_GuiManager(GuiManager* thing, uint32_t _N_, uint32_t* _Y_, NeighHDDisco
     thing->neighHD_discoverer = _neighHD_discoverer_;
     thing->neighLD_discoverer = _neighLD_discoverer_;
     thing->embedding_maker    = _embedding_maker_;
+
+    thing->rescale_button.x = 30;
+    thing->rescale_button.y = GUI_H - 50;
+    thing->rescale_button.w = 100;
+    thing->rescale_button.h = 50;
+
     printf("%d rand state (GUI)\n", thing->rand_state);
 }
 
@@ -85,17 +91,80 @@ void destroy_GuiManager(GuiManager* thing) {
     free(thing);
 }
 
+void change_alpha(float change, GuiManager* thing){
+    pthread_mutex_lock(thing->embedding_maker->maker_gpu->mutex_hparam_LDkernel_alpha);
+    float alpha = thing->embedding_maker->maker_gpu->hparam_LDkernel_alpha[0];
+    alpha += (float)change;
+    if(alpha < ALPHA_MIN){
+        alpha = ALPHA_MIN;
+    }
+    if(alpha > ALPHA_MAX){
+        alpha = ALPHA_MAX;
+    }
+    thing->embedding_maker->maker_gpu->hparam_LDkernel_alpha[0] = alpha;
+    pthread_mutex_unlock(thing->embedding_maker->maker_gpu->mutex_hparam_LDkernel_alpha);
+
+}
+
+void change_repulsion_multplier(float change, GuiManager* thing){
+    pthread_mutex_lock(thing->embedding_maker->maker_gpu->mutex_hparam_repulsion_multiplier);
+    float multiplier = thing->embedding_maker->maker_gpu->hparam_repulsion_multiplier[0];
+    multiplier += change;
+    if(multiplier < REPULSION_MULTIPLIER_MIN){
+        multiplier = REPULSION_MULTIPLIER_MIN;
+    }
+    if(multiplier > REPULSION_MULTIPLIER_MAX){
+        multiplier = REPULSION_MULTIPLIER_MAX;
+    }
+    thing->embedding_maker->maker_gpu->hparam_repulsion_multiplier[0] = multiplier;
+    pthread_mutex_unlock(thing->embedding_maker->maker_gpu->mutex_hparam_repulsion_multiplier);
+}
 
 
 void manage_events(SDL_Event* event, GuiManager* thing) {
+    bool fast_input   = (SDL_GetModState() & KMOD_SHIFT);
+    bool wheel_turned = false;
+    int wheel_y       = 0;
+    bool ctrl_held    = (SDL_GetModState() & KMOD_CTRL);
     while (SDL_PollEvent(event)) {
-        // if escape key is pressed, then quit
         if (event->type == SDL_KEYDOWN) {
+            // if escape key is pressed, then quit
             if (event->key.keysym.sym == SDLK_ESCAPE) {
                 thing->isRunning = false;
                 dying_breath("SDL_KEYDOWN event");
             }
         }
+        if (event->type == SDL_MOUSEWHEEL){
+            wheel_turned = true;
+            wheel_y = event->wheel.y;
+        }
+    }
+
+    if(wheel_turned){
+        if(ctrl_held){
+            float change = ((float)wheel_y) * 0.02f;
+            if(fast_input){
+                change *= 100.0f;
+            }
+            change_alpha(change, thing);
+        }
+        else{
+            float change = ((float)wheel_y) * 0.01f;
+            if(fast_input){
+                change *= 4.0f;
+            }
+            change_repulsion_multplier(change, thing);
+        }
+    }
+
+    // if button clicked, rescale the embedding
+    int x, y;
+    SDL_GetMouseState(&x, &y);
+    bool clicked = SDL_GetMouseState(NULL, NULL) & SDL_BUTTON(SDL_BUTTON_LEFT);
+    if(clicked && x >= thing->rescale_button.x && x <= thing->rescale_button.x + thing->rescale_button.w && y >= thing->rescale_button.y && y <= thing->rescale_button.y + thing->rescale_button.h){
+        pthread_mutex_lock(thing->embedding_maker->maker_gpu->mutex_rescale_embedding);
+        thing->embedding_maker->maker_gpu->rescale_embedding = true;
+        pthread_mutex_unlock(thing->embedding_maker->maker_gpu->mutex_rescale_embedding);
     }
 }
 
@@ -306,6 +375,68 @@ void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing) {
     sprintf(elapsed_time_str, "%d", (int)thing->elapsed_1);
     draw_text(elapsed_time_str, renderer, thing->font, 10, 10, textColor);
 
+
+    // draw alpha and repulsion multiplier
+    // alpha 
+    int x0_alpha = 20;
+    int y0_alpha = 600;
+    // clear with rectangle
+    SDL_Rect rect_alpha = {x0_alpha-50, y0_alpha-300, 150, 300};
+    background_colour(renderer);
+    SDL_RenderFillRect(renderer, &rect_alpha);
+    // draw vertical bar of length 300px
+    amber_colour(renderer);
+    SDL_RenderDrawLine(renderer, x0_alpha, y0_alpha, x0_alpha, y0_alpha - 300);
+    // draw cursor depending on alpha
+    pthread_mutex_lock(thing->embedding_maker->maker_gpu->mutex_hparam_LDkernel_alpha);
+    float alpha = thing->embedding_maker->maker_gpu->hparam_LDkernel_alpha[0];
+    pthread_mutex_unlock(thing->embedding_maker->maker_gpu->mutex_hparam_LDkernel_alpha);
+    float relative_alpha = (alpha - ALPHA_MIN) / (ALPHA_MAX - ALPHA_MIN);
+    int y_alpha = (int) (y0_alpha - 300 * relative_alpha);
+    SDL_RenderDrawLine(renderer, x0_alpha-5, y_alpha, x0_alpha+5, y_alpha);
+    // titel : alpha
+    char alpha_str[100];
+    sprintf(alpha_str, "alpha");
+    draw_text(alpha_str, renderer, thing->font, x0_alpha, y0_alpha+10, textColor);
+    // value (2 decimals) at cursor location
+    char alpha_val_str[100];
+    sprintf(alpha_val_str, "%.2f", alpha);
+    draw_text(alpha_val_str, renderer, thing->font, x0_alpha+30, y_alpha-20, textColor); 
+
+    // repulsion multiplier
+    int x0_repulsion = GUI_W - 40;
+    int y0_repulsion = 600;
+    // clear with rectangle
+    SDL_Rect rect_repulsion = {x0_repulsion-50, y0_repulsion-300, 150, 300};
+    background_colour(renderer);
+    SDL_RenderFillRect(renderer, &rect_repulsion);
+    // draw vertical bar of length 300px
+    amber_colour(renderer);
+    SDL_RenderDrawLine(renderer, x0_repulsion, y0_repulsion, x0_repulsion, y0_repulsion - 300);
+    // draw cursor depending on repulsion multiplier
+    pthread_mutex_lock(thing->embedding_maker->maker_gpu->mutex_hparam_repulsion_multiplier);
+    float repulsion_multiplier = thing->embedding_maker->maker_gpu->hparam_repulsion_multiplier[0];
+    pthread_mutex_unlock(thing->embedding_maker->maker_gpu->mutex_hparam_repulsion_multiplier);
+    float relative_repulsion = (repulsion_multiplier - REPULSION_MULTIPLIER_MIN) / (REPULSION_MULTIPLIER_MAX - REPULSION_MULTIPLIER_MIN);
+    int y_repulsion = (int) (y0_repulsion - 300 * relative_repulsion);
+    SDL_RenderDrawLine(renderer, x0_repulsion-5, y_repulsion, x0_repulsion+5, y_repulsion);
+    // title : repulsion 
+    char repulsion_str[100];
+    sprintf(repulsion_str, "repulsion");
+    draw_text(repulsion_str, renderer, thing->font, x0_repulsion, y0_repulsion+10, textColor);
+    // value (2 decimals) at cursor location
+    char repulsion_val_str[100];
+    sprintf(repulsion_val_str, "%.2f", repulsion_multiplier);
+    draw_text(repulsion_val_str, renderer, thing->font, x0_repulsion-50, y_repulsion-20, textColor);
+
+    // draw rescale button
+    SDL_Rect rescale_button = thing->rescale_button;
+    amber_colour(renderer);
+    SDL_RenderDrawRect(renderer, &rescale_button);
+    // draw text "rescale"
+    char rescale_str[100];
+    sprintf(rescale_str, "rescale");
+    draw_text(rescale_str, renderer, thing->font, rescale_button.x + 10, rescale_button.y + 10, textColor);
 
     // render the screen
     SDL_RenderPresent(renderer);

@@ -29,6 +29,8 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     thing->mutex_P = mutex_P;
     thing->HD_pct_new_neighs = pct_new_neighs_HD;
 
+    thing->mutex_rescale_embedding = mutex_allocate_and_init();
+
     // if Khd is not a multiple of 32, die
     if(Khd % 32 != 0){
         dying_breath("Khd is not a multiple of 32");}
@@ -338,9 +340,8 @@ void new_EmbeddingMaker_GPU(EmbeddingMaker_GPU* thing, uint32_t N, uint32_t* thr
     printf("number of threads per block: %u\n", Kld* Kern5_Ni);
     printf("grid shape for kernel 5: %u\n\n", thing->Kern_leak_gridshape[0]);
     
-    
-
 }
+
 
 // 1: gradient descent: fill momenta_attraction, momenta_repulsion_far, momenta_repulsion
 // 2: this also recomputes the furthest_neighdists_LD
@@ -395,11 +396,8 @@ void apply_momenta_and_decay_GPU(EmbeddingMaker_GPU* thing){
     pthread_mutex_lock(thing->mutex_hparam_repulsion_multiplier);
 
     // *thing->hparam_repulsion_multiplier = 0.02f + 0.18f * powf((1.0 - thing->HD_pct_new_neighs[0]), 2.0f);
-    *thing->hparam_repulsion_multiplier = 0.02f + 0.18f * powf((1.0 - thing->HD_pct_new_neighs[0]), 2.0f);
-    printf("RESETTING repulsion multiplier to %f  (en atendant le cursor)\n", *thing->hparam_repulsion_multiplier);
-
-
-    faire curseur pour le repulsion multiplier
+    /* *thing->hparam_repulsion_multiplier = 0.02f + 0.18f * powf((1.0 - thing->HD_pct_new_neighs[0]), 2.0f);
+    printf("RESETTING repulsion multiplier to %f  (en atendant le cursor)\n", *thing->hparam_repulsion_multiplier); */
 
     float repulsion_multiplier = thing->hparam_repulsion_multiplier[0];
     pthread_mutex_unlock(thing->mutex_hparam_repulsion_multiplier);
@@ -569,6 +567,31 @@ void* routine_EmbeddingMaker_GPU(void* arg){
         thing->leak_phase = (bool) (1 - thing->leak_phase);
         // sleep for 1ms, it's okay
         usleep(1000);
+
+        if(thing->rescale_embedding){
+            // rescale the embedding
+            pthread_mutex_lock(thing->mutex_rescale_embedding);
+            thing->rescale_embedding = false;
+            pthread_mutex_unlock(thing->mutex_rescale_embedding);
+            cuda_launch___rescale_embedding(thing->Kern_parameter_updates_blockshape, thing->Kern_parameter_updates_gridshape, thing->N, thing->cu_Xld_base, thing->cu_Xld_nesterov, thing->cu_momenta_attrac, thing->cu_momenta_repuls_near, thing->cu_momenta_repuls_far___0, thing->cu_momenta_repuls_far___1);
+            // recompute neigh dists LD
+            cuda_launch___recompute_LD_neighdists(thing->Kern_parameter_updates_blockshape, thing->Kern_parameter_updates_gridshape, thing->N, thing->cu_Xld_nesterov, thing->cu_neighsLD, thing->cu_furthest_neighdists_LD);
+            //send data to CPU
+            memcpy_CUDA_to_CPU_float(as_float_1d(thing->Xld_cpu, thing->N, Mld), thing->cu_Xld_base, thing->N*Mld);
+            memcpy_CUDA_to_CPU_float(thing->furthest_neighdists_LD_cpu, thing->cu_furthest_neighdists_LD, thing->N);
+            // recompute Qdenom
+            double Qdenom_accumulator = 0.0;
+            uint32_t n_samples = 10000u;
+            for(uint32_t n_votes = 0; n_votes < n_samples; n_votes++){
+                uint32_t i = rand_uint32_between(&thing->rand_state, 0u, thing->N);
+                uint32_t j = rand_uint32_between(&thing->rand_state, 0u, thing->N);
+                Qdenom_accumulator += 1.0f / powf(1.0f + f_euclidean_sq_in_embedding(thing->Xld_cpu[i], thing->Xld_cpu[j])/thing->hparam_LDkernel_alpha[0], thing->hparam_LDkernel_alpha[0]);
+            }
+            uint32_t matrix_area = thing->N * (thing->N-1);
+            double   scaling_factor = (double) (matrix_area) / (double) n_samples;
+            thing->Qdenom_EMA = (float) (Qdenom_accumulator * scaling_factor);
+        }
+
     }
     return NULL; 
 }

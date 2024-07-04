@@ -29,14 +29,21 @@ using define is very very stupid
 #define HD_PCT_BIAS 0.02f
 #define LD_PCT_BIAS_MUL 0.32f
 
+// repulsion multplier min and max
+#define REPULSION_MULTIPLIER_MIN 0.005f
+#define REPULSION_MULTIPLIER_MAX 1.5f
+
+// alpha min and max
+#define ALPHA_MIN 0.01f
+#define ALPHA_MAX 150.0f
+
 // momentum decay
 // #define MOMENTUM_ALPHA 0.9f
-#define MOMENTUM_ALPHA 0.2f
+// #define MOMENTUM_ALPHA 0.2f
+#define MOMENTUM_ALPHA 0.5f
 
 // base LR
-// #define BASE_LR 0.1f
-// #define BASE_LR 0.3f
-#define BASE_LR 0.2f
+#define BASE_LR 0.1f
 
 // a global epsilon for floating points equal to 1e-16
 #define FLOAT_EPS 1e-12f

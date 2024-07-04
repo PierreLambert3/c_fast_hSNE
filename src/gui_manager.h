@@ -23,6 +23,9 @@ typedef struct {
     uint32_t timestamp_1;
     uint32_t elapsed_1;
 
+    // rescale button location
+    SDL_Rect rescale_button;
+
     // SDL font
     TTF_Font* font; // 
 
@@ -43,5 +46,9 @@ void start_thread_GuiManager(GuiManager* thing);
 void manage_events(SDL_Event* event, GuiManager* thing);
 void draw_screen_block(SDL_Renderer* renderer, GuiManager* thing);
 void manage_frame_rate(GuiManager* thing, uint32_t elapsed_time, uint32_t target_frame_time);
+
+
+void change_alpha(float change, GuiManager* thing);
+void change_repulsion_multplier(float change, GuiManager* thing);
 
 #endif // GUIMANAGER_H

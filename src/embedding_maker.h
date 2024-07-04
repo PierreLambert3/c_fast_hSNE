@@ -51,6 +51,7 @@ typedef struct {
     uint32_t* Kern_leak_blockshape;
     uint32_t* Kern_parameter_updates_gridshape;
     uint32_t* Kern_parameter_updates_blockshape;
+    
 
     // streams
     // computing nudges (& Qdenomsum)
@@ -62,6 +63,10 @@ typedef struct {
     cudaStream_t stream_leak;
     // parameter update
     cudaStream_t stream_parameter_updates;
+
+    // rescale embedding (get things unstuck)
+    pthread_mutex_t* mutex_rescale_embedding;
+    bool rescale_embedding;
 
     bool leak_phase; // will be toggled at each iteration
 
@@ -136,5 +141,11 @@ void cuda_launch___apply_momenta_and_decay(cudaStream_t, uint32_t*, uint32_t*,\
         float*, float*, float*,\
         float, float);
 
+void cuda_launch___rescale_embedding(uint32_t*, uint32_t*,\
+    uint32_t, float*, float*,\
+    float*, float*, float*, float*);
+
+void cuda_launch___recompute_LD_neighdists(uint32_t*, uint32_t*,\
+    uint32_t, float*, uint32_t*, float*);
 
 #endif // EMBEDDING_MAKER_H

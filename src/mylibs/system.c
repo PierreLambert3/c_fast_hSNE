@@ -203,7 +203,7 @@ inline void memcpy_float_matrix(float** recipient, float** original, uint32_t n,
 }
 
 void free_matrix(void** matrix, uint32_t n){
-    free(matrix[0]);  // Free the data array
+    free(matrix[n]); // Free the data array
     free(matrix);  // Free the array of pointers
 }
 
